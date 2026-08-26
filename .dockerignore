@@ -1,0 +1,27 @@
+# ── Build exclusions ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# ── Version control ─────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Credentials & secrets (NEVER include in image) ──────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── OS artifacts ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor/IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

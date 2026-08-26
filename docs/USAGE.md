@@ -1,0 +1,500 @@
+# MCP GitHub Project Management — Usage Guide
+
+Complete reference for all 40 tools exposed by the GitHub Project Management MCP server.
+
+## Project Configuration
+
+- **Organization**: (your configured org)
+- **Repository**: (your configured repo)
+- **Project number**: 1
+- **Status values**: 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash
+- **Priority values**: Urgent, Important, Not urgent, Not important
+
+---
+
+## Tool Categories
+
+| Category | Tools | Count |
+|----------|-------|-------|
+| Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 10 |
+| Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, search_issues, bulk_close_issues, bulk_assign | 8 |
+| Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
+| Milestones | create_milestone, close_milestone, list_milestones | 3 |
+| Labels | create_label, list_labels | 2 |
+| Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request | 5 |
+| Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
+
+---
+
+## 🔍 Discovery & Board
+
+### discover_ids
+
+Discovers project node ID, all field IDs, and option values. Results are cached for 24h.
+
+```
+Input:  { "force": false }
+Output: { project_id, owner, project_number, fields: { Status: { id, options }, Priority: { id, options }, ... } }
+```
+
+### list_project_items
+
+Lists items from the project board with optional filters.
+
+```
+Input:  { "status": "📌 To Do", "priority": "Urgent", "assignee": "jersonmartinez" }
+Output: { items: [{ node_id, title, issue_number, status, priority, milestone, due_date, assignees, labels }], count }
+```
+
+**Filters** (all optional): status, priority, labels, assignee, milestone, due_date, due_date_op (before/after/exact)
+
+### create_project_item
+
+Creates a new GitHub issue and adds it to the project board.
+
+```
+Input:  { "title": "New feature", "body": "Description", "status": "📌 To Do", "priority": "Important", "assignees": ["jersonmartinez"], "labels": ["🚀 Feature"], "milestone": "Sprint 2 - Jul 14-20", "due_date": "2026-07-20" }
+Output: { issue_number, issue_url, item_node_id }
+```
+
+### update_project_item_fields
+
+Updates one or more fields on a project item.
+
+```
+Input:  { "item_id": "PVTI_...", "fields": { "Status": "🛠 In Progress", "Priority": "Urgent", "Due date": "2026-07-15" } }
+Output: { item_id, results: [{ field, outcome, value }] }
+```
+
+### set_estimate
+
+Sets the time estimate (in hours) on a project item.
+
+```
+Input:  { "item_id": "PVTI_...", "value": 4.0 }
+Output: { item_id, estimate, field_id }
+```
+
+### archive_project_item
+
+Removes an item from the active project board (archives it).
+
+```
+Input:  { "item_id": "PVTI_..." }
+Output: { item_id, status: "archived" }
+```
+
+### move_to_done / move_to_trash
+
+Shortcuts to move items to Done or Trash status.
+
+```
+Input:  { "item_id": "PVTI_..." }
+Output: { item_id, status: "Done" }
+```
+
+### move_to_status
+
+Moves a project item to ANY status column.
+
+```
+Input:  { "item_id": "PVTI_...", "status": "🛠 In Progress" }
+Output: { item_id, status, message }
+```
+
+**Valid statuses**: 📢 Proposal, 📌 To Do, 🛠 In Progress, ⏸ Pending, ✅ Done, 🗑️ Trash
+
+### bulk_update_items
+
+Updates fields on multiple project items at once.
+
+```
+Input:  { "item_ids": ["PVTI_...", "PVTI_..."], "fields": { "Priority": "Urgent", "Due date": "2026-08-01" } }
+Output: { results: [{ item_id, fields: [{ field, status }] }], total, fully_updated }
+```
+
+---
+
+## 📋 Issues
+
+### close_issue
+
+Closes a GitHub issue (reason: completed).
+
+```
+Input:  { "issue_number": 258 }
+Output: { issue_number, state: "closed" }
+```
+
+### reopen_issue
+
+Reopens a previously closed issue.
+
+```
+Input:  { "issue_number": 258 }
+Output: { issue_number, state: "open" }
+```
+
+### comment_issue
+
+Adds a markdown comment to an issue.
+
+```
+Input:  { "issue_number": 258, "body": "Working on this now. ETA: 2 hours." }
+Output: { issue_number, comment_url }
+```
+
+### edit_issue
+
+Edits issue properties: title, body, milestone, labels, assignees.
+
+```
+Input:  { "issue_number": 258, "milestone": "Sprint 3 - Jul 21-27", "add_labels": ["🔒 Security"], "add_assignees": ["ffactib"] }
+Output: { issue_number, updated_fields }
+```
+
+**Fields** (all optional): title, body, milestone, add_labels, remove_labels, add_assignees, remove_assignees
+
+### get_issue_detail
+
+Gets complete issue details including sub-issues.
+
+```
+Input:  { "issue_number": 257 }
+Output: { number, title, body, state, labels, assignees, milestone, sub_issues: [{ number, title, state }], sub_issues_count }
+```
+
+### search_issues
+
+Searches issues by text, labels, milestone, assignee, state.
+
+```
+Input:  { "query": "admin", "labels": ["🎨 FrontEnd"], "state": "open", "limit": 20 }
+Output: { issues: [{ number, title, state, labels, milestone, assignees }], count }
+```
+
+### bulk_close_issues
+
+Closes multiple issues at once with optional comment.
+
+```
+Input:  { "issue_numbers": [80, 81, 82], "reason": "completed", "comment": "✅ Implemented in current version." }
+Output: { results: [{ issue, status }], total, closed }
+```
+
+### bulk_assign
+
+Assigns multiple issues to users and/or milestone.
+
+```
+Input:  { "issue_numbers": [258, 259, 260], "assignees": ["ffactib"], "milestone": "Sprint 2 - Jul 14-20" }
+Output: { results, total, updated }
+```
+
+---
+
+## 🌳 Hierarchy
+
+### add_sub_issue
+
+Links a child issue as a sub-issue of a parent (formal GitHub sub-issue relationship).
+
+```
+Input:  { "parent_issue_number": 257, "child_issue_number": 258 }
+Output: { parent_issue, child_issue, message }
+```
+
+### remove_sub_issue
+
+Removes the sub-issue relationship between parent and child.
+
+```
+Input:  { "parent_issue_number": 257, "child_issue_number": 258 }
+Output: { parent_issue, child_issue, message }
+```
+
+### list_sub_issues
+
+Lists all sub-issues of a parent issue.
+
+```
+Input:  { "issue_number": 257 }
+Output: { parent_issue, sub_issues: [{ number, title, state, assignees }], count }
+```
+
+---
+
+## 📅 Milestones
+
+### create_milestone
+
+Creates a new milestone with optional description and due date.
+
+```
+Input:  { "title": "Sprint 13 - Sep 28", "description": "Post-launch fixes", "due_date": "2026-09-28" }
+Output: { number, title, html_url }
+```
+
+### close_milestone
+
+Closes an open milestone by title.
+
+```
+Input:  { "title": "Sprint 1 - Jul 7-13" }
+Output: { number, title, state: "closed" }
+```
+
+### list_milestones
+
+Lists milestones filtered by state.
+
+```
+Input:  { "state": "open" }
+Output: { milestones: [{ number, title, state, due_on, open_issues, closed_issues }], count }
+```
+
+---
+
+## 🏷️ Labels
+
+### create_label
+
+Creates or updates a label with name and hex color.
+
+```
+Input:  { "name": "🔥 Hotfix", "color": "d93f0b", "description": "Critical production fix" }
+Output: { name, color, message }
+```
+
+### list_labels
+
+Lists all labels in the repository.
+
+```
+Input:  { "limit": 50 }
+Output: { labels: [{ name, color, description }], count }
+```
+
+---
+
+## 📊 Stats & Planning
+
+### get_project_stats
+
+Gets overall project statistics: issues per sprint, progress percentage.
+
+```
+Input:  {}
+Output: { total_open_issues, total_closed_issues, overall_progress_pct, sprints: [{ title, open_issues, closed_issues, progress_pct, due_on }] }
+```
+
+### get_sprint_summary
+
+Detailed summary of a specific sprint: issues, progress, assignee distribution, days remaining.
+
+```
+Input:  { "milestone_title": "Sprint 2 - Jul 14-20" }
+Output: { milestone, due_on, days_remaining, total_issues, open, closed, progress_pct, assignee_distribution, open_issues }
+```
+
+### sprint_planning
+
+Auto-distributes unassigned sprint issues between team members.
+
+```
+Input:  { "milestone_title": "Sprint 2 - Jul 14-20", "team_members": ["jersonmartinez", "ffactib"], "strategy": "backend_frontend" }
+Output: { milestone, strategy, total_issues, already_assigned, unassigned, distribution: { "user": { already_assigned, newly_planned, total, new_issues } }, next_step }
+```
+
+**Strategies**:
+- `balanced`: Equal number per person (load-aware)
+- `backend_frontend`: Backend labels → member[0], Frontend labels → member[1]
+- `round_robin`: Alternate assignment
+
+### generate_release_notes
+
+Generates formatted markdown release notes from closed issues in a milestone.
+
+```
+Input:  { "milestone_title": "Sprint 1 - Jul 7-13", "version": "v2.1.0", "include_contributors": true, "group_by_label": true }
+Output: { version, milestone, issues_count, contributors, categories_used, markdown }
+```
+
+### link_pull_request
+
+Links a PR to an issue (adds closing reference + comment).
+
+```
+Input:  { "issue_number": 258, "pr_number": 45 }
+Output: { issue_number, pr_number, pr_url, message }
+```
+
+---
+
+## 🚀 Workflows
+
+### complete_issue
+
+Completes an issue lifecycle: adds completion comment, closes it, project auto-moves to Done.
+
+```
+Input:  { "issue_number": 258, "summary": "Fixed navigation. Tested on all browsers." }
+Output: { issue_number, status: "completed", comment, message }
+```
+
+### daily_standup
+
+Generates a daily standup report: what was done recently, what's in progress, what's blocked.
+
+```
+Input:  { "username": "jersonmartinez" }  // or {} for all team
+Output: { date, done_recently: [{ number, title }], done_count, in_progress: [...], in_progress_count, blocked: [...], blocked_count }
+```
+
+### sprint_review
+
+Sprint retrospective data: velocity, completion %, per-person breakdown, pending items.
+
+```
+Input:  { "milestone_title": "Sprint 1 - Jul 7-13" }
+Output: { milestone, total_issues, completed, pending, progress_pct, velocity, per_person: { "user": { completed, pending } }, pending_issues }
+```
+
+### triage_new_issues
+
+Finds untriaged issues (missing milestone, assignee, or labels).
+
+```
+Input:  {}
+Output: { untriaged_count, issues: [{ number, title, problems: ["no_milestone", "no_assignee"] }] }
+```
+
+### escalate_overdue
+
+Finds issues past their due date that are still open.
+
+```
+Input:  {}
+Output: { overdue_count, issues: [{ number, title, milestone, days_overdue, assignees }] }
+```
+
+### handoff_issue
+
+Reassigns an issue from one person to another with a context comment.
+
+```
+Input:  { "issue_number": 267, "from_user": "jersonmartinez", "to_user": "ffactib", "context": "Backend done, needs frontend UI now." }
+Output: { issue_number, from, to, message }
+```
+
+### create_epic
+
+Creates a parent issue with multiple sub-issues linked in a single call.
+
+```
+Input:  { "title": "OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI", "Tests"], "milestone": "Sprint 4 - Jul 28 - Ago 3", "assignee": "jersonmartinez", "labels": ["📱 Mobile"] }
+Output: { parent_issue, parent_url, sub_issues: [{ number, title }], sub_issues_count }
+```
+
+### close_sprint
+
+Closes a sprint: closes the milestone, moves pending issues to the next sprint, generates summary.
+
+```
+Input:  { "milestone_title": "Sprint 1 - Jul 7-13", "next_milestone": "Sprint 2 - Jul 14-20" }
+Output: { milestone, total, completed, pending_moved, moved_to, completion_pct, moved_issues, message }
+```
+
+### blocked_report
+
+Reports issues that are blocked or pending, with dependency information.
+
+```
+Input:  {}
+Output: { blocked_count, issues: [{ number, title, assignees, milestone, dependency: 123 }] }
+```
+
+---
+
+## Error Handling
+
+All tools return either a success or error response:
+
+**Success**: `{ "ok": true, "data": { ... } }`
+
+**Error**: `{ "ok": false, "error_type": "validation|not_found|internal", "message": "...", "suggestion": "..." }`
+
+Error types:
+- `validation`: Invalid input (wrong status value, missing required field)
+- `not_found`: Issue/milestone/item doesn't exist
+- `internal`: GitHub API error, network issue, or unexpected failure
+
+---
+
+## Authentication
+
+The server resolves a GitHub token in this order:
+1. `GITHUB_TOKEN` environment variable
+2. `GH_TOKEN` environment variable
+3. `gh auth token` (GitHub CLI authenticated session)
+
+**Required permissions** (Fine-grained PAT):
+- Repository: Read & Write (issues, pull requests)
+- Organization: Read & Write (projects, members)
+
+**Note**: Fine-grained tokens (`github_pat_*`) skip scope validation automatically.
+
+---
+
+## Architecture
+
+```
+Kiro IDE → docker compose exec backend → python -m app.mcp.github_project.server → stdio MCP protocol
+```
+
+The server runs inside the backend Docker container, communicating with Kiro via stdin/stdout using the MCP stdio transport protocol.
+
+### File Structure
+
+```
+app/backend/app/mcp/github_project/
+├── server.py              ← Entry point (40 tools registered)
+├── auth.py                ← Token resolution + scope validation
+├── config.py              ← Pydantic settings (env prefix: GH_PROJECT_)
+├── error_handling.py      ← Unified error response builder
+├── exceptions.py          ← Custom exception types
+├── clients/
+│   ├── gh_cli_client.py   ← Async wrapper for `gh` CLI
+│   ├── graphql_client.py  ← GraphQL API client
+│   └── cache_manager.py   ← File-based cache with TTL
+├── models/
+│   └── responses.py       ← ToolSuccess/ToolError response models
+├── services/
+│   ├── discovery_service.py ← Project metadata discovery
+│   ├── project_service.py   ← Field updates via GraphQL
+│   └── issue_service.py     ← Issue operations via CLI
+├── tools/
+│   ├── discover.py          ← discover_ids
+│   ├── list_items.py        ← list_project_items
+│   ├── create_item.py       ← create_project_item
+│   ├── update_fields.py     ← update_project_item_fields
+│   ├── estimate.py          ← set_estimate
+│   ├── archive.py           ← archive, move_to_done, move_to_trash
+│   ├── close.py             ← close_issue
+│   ├── comment_issue.py     ← comment_issue
+│   ├── edit_issue.py        ← edit_issue
+│   ├── add_sub_issue.py     ← add_sub_issue
+│   ├── advanced_operations.py ← move_to_status, bulk_update, get_detail, sub-issues, reopen
+│   ├── milestones.py        ← create/close/list milestones
+│   ├── labels.py            ← create/list labels
+│   ├── bulk_operations.py   ← bulk_close, search_issues
+│   ├── nice_to_have.py      ← stats, sprint_summary, link_pr, bulk_assign
+│   ├── planning.py          ← sprint_planning, generate_release_notes
+│   └── workflows.py         ← complete, standup, review, triage, escalate, handoff, epic, close_sprint, blocked
+└── docs/
+    ├── USAGE.md             ← This file
+    ├── SETUP.md             ← Installation & configuration
+    ├── PARAMETERS.md        ← Environment variables reference
+    ├── GRAPHQL_REFERENCE.md ← GraphQL queries used
+    └── TROUBLESHOOTING.md   ← Common issues & fixes
+```
