@@ -1,0 +1,36 @@
+# ── MCP Docker Compose ────────────────────────────────────────────────────────
+# Levanta el MCP server como servicio local con credenciales via .env
+#
+# Setup:
+#   1. cp mcp/.env.example mcp/.env
+#   2. Editar mcp/.env con tu token y target
+#   3. docker compose -f mcp/compose.yml up --build
+#
+# El MCP usa stdio transport — este compose es para desarrollo/test.
+# En producción, se invoca directamente con `docker run` desde el cliente MCP.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: factib_mcp
+    env_file:
+      - .env
+    environment:
+      # GITHUB_TOKEN se lee del .env file
+      # Si prefieres pasarlo desde tu shell:
+      #   GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    stdin_open: true
+    tty: false
+    restart: "no"
+    # Health check: verifica que Python y las tools cargan correctamente
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.path.insert(0,'/app'); import server; print('ok')"]
+      interval: 30s
+      timeout: 5s
+      retries: 1
+    # No expone puertos — comunicación por stdio
+    # No necesita volúmenes — stateless (cache es efímera por diseño)
