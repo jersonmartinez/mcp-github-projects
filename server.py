@@ -22,6 +22,7 @@ from tools.projects.archive import (
     move_to_done,
     move_to_trash,
 )
+from tools.projects.add_item import add_item_to_project
 from tools.issues.close import close_issue
 from tools.issues.comment_issue import comment_issue
 from tools.issues.add_sub_issue import add_sub_issue
@@ -83,6 +84,7 @@ mcp.tool()(discover_ids)
 mcp.tool()(list_project_items)
 mcp.tool()(create_project_item)
 mcp.tool()(update_project_item_fields)
+mcp.tool()(add_item_to_project)
 mcp.tool()(set_estimate)
 mcp.tool()(archive_project_item)
 mcp.tool()(move_to_done)

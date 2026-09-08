@@ -16,7 +16,7 @@ Complete reference for all 40 tools exposed by the GitHub Project Management MCP
 
 | Category | Tools | Count |
 |----------|-------|-------|
-| Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 10 |
+| Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, add_item_to_project, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 11 |
 | Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, search_issues, bulk_close_issues, bulk_assign | 8 |
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
 | Milestones | create_milestone, close_milestone, list_milestones | 3 |
@@ -50,20 +50,94 @@ Output: { items: [{ node_id, title, issue_number, status, priority, milestone, d
 
 ### create_project_item
 
-Creates a new GitHub issue and adds it to the project board.
+Creates a new GitHub issue and adds it to the project board. All board custom
+fields can be set at creation, and any omitted board field is filled with a
+configured default (`apply_defaults` is `true` by default) so an item never
+lands with empty custom fields.
 
 ```
-Input:  { "title": "New feature", "body": "Description", "status": "📌 To Do", "priority": "Important", "assignees": ["jersonmartinez"], "labels": ["🚀 Feature"], "milestone": "Sprint 2 - Jul 14-20", "due_date": "2026-07-20" }
+Input:  { "title": "New feature", "body": "Description", "status": "In Progress",
+          "priority": "High", "area": "server", "work_type": "Feature",
+          "estimate": 5, "assignees": ["jersonmartinez"], "labels": ["🚀 Feature"],
+          "milestone": "Sprint 7", "due_date": "2026-07-20" }
 Output: { issue_number, issue_url, item_node_id }
 ```
 
+Accepted fields: `status`, `priority`, `area`, `work_type`, `estimate`,
+`milestone`, `due_date`, `assignees`, `labels`, plus `apply_defaults`
+(default `true`). Pass `apply_defaults: false` to set only the fields you
+provided.
+
 ### update_project_item_fields
 
-Updates one or more fields on a project item.
+Updates one or more fields on a project item. Accepts **any board field** —
+single-selects (`Status`, `Priority`, `Area`, `Work Type`), `NUMBER`
+(`Estimate`), `DATE` (`Due date`), and `TEXT` — resolving single-select option
+IDs by name at runtime from discovery. Issue-level fields (`body`,
+`assignees`, `labels`) route through `gh issue edit`.
+
+Address the item by node ID **or** by issue/PR number (resolved on the board,
+owner-type aware — works on user- and organization-owned boards):
 
 ```
-Input:  { "item_id": "PVTI_...", "fields": { "Status": "🛠 In Progress", "Priority": "Urgent", "Due date": "2026-07-15" } }
-Output: { item_id, results: [{ field, outcome, value }] }
+# By item node ID
+Input:  { "item_id": "PVTI_...", "fields": { "Status": "In Progress",
+          "Priority": "Urgent", "Area": "server", "Estimate": 3,
+          "Due date": "2026-07-15", "Work Type": "Bug" } }
+
+# By issue/PR number (resolved on the board)
+Input:  { "issue_number": 42, "fields": { "Priority": "High" } }
+
+# Fill any omitted board fields with configured defaults
+Input:  { "issue_number": 42, "fields": {}, "apply_defaults": true,
+          "labels": ["bug"] }
+
+Output: { item_id, results: [{ field, outcome, value }], status }
+```
+
+Extra options: `apply_defaults` (fill omitted board fields from config
+defaults), `labels` (used to infer the `Work Type` default), and `enforce`
+(override `GH_PROJECT_ENFORCE_FIELDS` for this call — error if any board field
+is still unset after defaults).
+
+#### Supported field types
+
+| Board field type | Example fields | Value format |
+|------------------|----------------|--------------|
+| `SINGLE_SELECT` | Status, Priority, Area, Work Type | option **name** (e.g. `"High"`) — resolved to option id |
+| `NUMBER` | Estimate | numeric (e.g. `3` or `3.5`) |
+| `DATE` | Due date | ISO 8601 `YYYY-MM-DD` |
+| `TEXT` | any text field | string |
+| Milestone | Milestone | milestone title |
+| Issue fields | body, assignees, labels | string / list |
+
+#### Field defaults (`apply_defaults` / creation)
+
+When a board field is omitted and defaults apply, these values are used
+(all overridable via env — see [SETUP](SETUP.md#board-field-defaults)):
+
+| Field | Default | Env var |
+|-------|---------|---------|
+| Status | first board option | — |
+| Priority | `Medium` | `GH_PROJECT_DEFAULT_PRIORITY` |
+| Area | none (unless configured & valid) | `GH_PROJECT_DEFAULT_AREA` |
+| Estimate | `3` | `GH_PROJECT_DEFAULT_ESTIMATE` |
+| Due date | today + 7 days | `GH_PROJECT_DEFAULT_DUE_DAYS` |
+| Work Type | `Bug` if a `bug` label else `Feature` | `GH_PROJECT_DEFAULT_WORK_TYPE` |
+
+Only fields that actually exist on the board are set; an invalid configured
+single-select option is skipped rather than sent.
+
+### add_item_to_project
+
+Adds an existing issue or PR to the configured project board via
+`addProjectV2ItemById` (owner-type aware; idempotent — an item already on the
+board returns its existing id). Returns the project item node id, which you can
+pass straight to `update_project_item_fields`.
+
+```
+Input:  { "issue_or_pr_number": 42 }
+Output: { issue_or_pr_number, item_id }
 ```
 
 ### set_estimate

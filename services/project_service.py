@@ -17,10 +17,14 @@ from clients.graphql_client import GraphQLClient
 from core.config import get_settings
 from core.exceptions import ValidationError
 from graphql.mutations import (
+    ADD_ITEM_TO_PROJECT_MUTATION,
     ARCHIVE_ITEM_MUTATION,
     UPDATE_FIELD_MUTATION,
 )
-from graphql.queries import LIST_ITEMS_QUERY
+from graphql.queries import (
+    get_list_items_query,
+    get_query_variables,
+)
 from models.context import GitHubContext
 from models.items import ProjectItem
 from models.metadata import ProjectField, ProjectMetadata
@@ -158,6 +162,123 @@ class ProjectService:
         logger.info(
             "Added issue #%d to project %d, item ID: %s",
             issue_number,
+            metadata.project_number,
+            item_id,
+        )
+        return item_id
+
+    async def resolve_item_id(
+        self,
+        metadata: ProjectMetadata,
+        issue_or_pr_number: int,
+    ) -> str | None:
+        """Resolve a project item node ID from an issue / PR number.
+
+        Scans the board (owner-type aware — works on both user- and
+        organization-owned projects, see issue #17) and returns the node
+        ID of the item whose underlying Issue/PR number matches.
+
+        Args:
+            metadata: Discovered project metadata.
+            issue_or_pr_number: The issue or pull-request number to locate.
+
+        Returns:
+            The project item node ID, or None if the number is not on the
+            board.
+        """
+        items = await self._fetch_all_items(metadata, get_settings().max_items)
+        for item in items:
+            if item.issue_number == issue_or_pr_number:
+                return item.node_id
+        return None
+
+    async def resolve_content_id(
+        self,
+        issue_or_pr_number: int,
+    ) -> str:
+        """Resolve an issue / PR number to its content node ID via ``gh``.
+
+        The node ID is required by ``addProjectV2ItemById``. Issues and pull
+        requests share a numbering space in a repo but are distinct REST
+        resources, so this tries the issue endpoint first and falls back to
+        the pulls endpoint.
+
+        Args:
+            issue_or_pr_number: The issue or pull-request number.
+
+        Returns:
+            The GraphQL global node ID (``node_id``) of the issue or PR.
+
+        Raises:
+            ValidationError: If the target repository is unknown, or the
+                number resolves to neither an issue nor a PR.
+        """
+        target = self._context.target
+        if target.repository is None:
+            raise ValidationError(
+                "Resolving a content ID requires a target repository"
+            )
+        repo = f"{target.owner_login}/{target.repository}"
+
+        for kind in ("issues", "pulls"):
+            try:
+                result = await self._gh_client.run([
+                    "api",
+                    f"repos/{repo}/{kind}/{issue_or_pr_number}",
+                    "--jq",
+                    ".node_id",
+                ])
+            except Exception:  # noqa: BLE001 - try the next resource kind
+                continue
+            node_id = (result.stdout or "").strip()
+            if node_id:
+                return node_id
+
+        raise ValidationError(
+            f"#{issue_or_pr_number} is neither an issue nor a pull request "
+            f"in {repo}, or is not accessible with the current token."
+        )
+
+    async def add_item_by_content_id(
+        self,
+        metadata: ProjectMetadata,
+        content_id: str,
+    ) -> str:
+        """Add an issue/PR to the project by its content node ID via GraphQL.
+
+        Uses ``addProjectV2ItemById`` (owner-agnostic — the project node ID
+        already encodes the owner), returning the created (or pre-existing)
+        item node ID. Adding an item that is already on the board is
+        idempotent: GitHub returns the existing item.
+
+        Args:
+            metadata: Discovered project metadata (provides project_id).
+            content_id: The issue/PR global node ID.
+
+        Returns:
+            The project item node ID.
+
+        Raises:
+            GraphQLError: If the mutation fails.
+        """
+        variables = {
+            "projectId": metadata.project_id,
+            "contentId": content_id,
+        }
+        response = await self._graphql_client.execute_with_retry(
+            ADD_ITEM_TO_PROJECT_MUTATION,
+            variables,
+            is_mutation=True,
+        )
+        item_id: str = (
+            response.get("data", {})
+            .get("addProjectV2ItemById", {})
+            .get("item", {})
+            .get("id", "")
+        )
+        logger.info(
+            "Added content %s to project %d, item ID: %s",
+            content_id,
             metadata.project_number,
             item_id,
         )
@@ -332,27 +453,36 @@ class ProjectService:
         cursor: str | None = None
         page_size = get_settings().page_size
 
+        # Owner-type awareness: user-owned boards are reached via
+        # ``user(login:)`` with a ``$login`` variable, org boards via
+        # ``organization(login:)`` with ``$org`` (see issue #17). The
+        # context already resolves 'auto' → concrete type at build time.
+        owner_type = self._context.target.owner_type
+        query = get_list_items_query(owner_type)
+        owner_key = "user" if owner_type == "user" else "organization"
+
         while len(items) < max_items:
             remaining = max_items - len(items)
             fetch_count = min(page_size, remaining)
 
-            variables: dict = {
-                "org": metadata.owner,
-                "number": metadata.project_number,
-                "first": fetch_count,
-            }
+            variables = get_query_variables(
+                owner_login=metadata.owner,
+                project_number=metadata.project_number,
+                owner_type=owner_type,
+                first=fetch_count,
+            )
             if cursor is not None:
                 variables["after"] = cursor
 
             response = await self._graphql_client.execute_with_retry(
-                LIST_ITEMS_QUERY,
+                query,
                 variables,
                 is_mutation=False,
             )
 
             data = response.get("data", {})
             project_data = (
-                data.get("organization", {})
+                data.get(owner_key, {})
                 .get("projectV2", {})
                 .get("items", {})
             )

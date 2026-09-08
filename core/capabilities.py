@@ -88,6 +88,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 
     # --- Project Board ---
     "update_project_item_fields": frozenset({PW}),
+    "add_item_to_project": frozenset({PW}),
     "move_to_status": frozenset({PW}),
     "move_to_done": frozenset({PW}),
     "move_to_trash": frozenset({PW}),

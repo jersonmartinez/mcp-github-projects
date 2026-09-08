@@ -25,14 +25,16 @@ from clients.cache_manager import CacheManager
 from clients.gh_cli_client import GHCLIClient
 from clients.graphql_client import GraphQLClient
 from core.error_handling import build_error_response, handle_tool_error
+from core.config import get_settings
 from core.exceptions import (
     AuthenticationError,
     GraphQLError,
     RateLimitError,
     ValidationError,
 )
-from models.responses import ToolSuccess
+from models.responses import ToolSuccess, ToolError
 from services.discovery_service import DiscoveryService
+from services.field_defaults import compute_defaults
 from services.issue_service import IssueService
 from services.project_service import ProjectService
 
@@ -69,6 +71,15 @@ class CreateProjectItemInput(BaseModel):
     priority: str | None = Field(
         default=None, description="Priority field value for the project item"
     )
+    area: str | None = Field(
+        default=None, description="Area single-select value for the project item"
+    )
+    work_type: str | None = Field(
+        default=None, description="Work Type single-select value (e.g. Bug/Feature)"
+    )
+    estimate: float | None = Field(
+        default=None, description="Estimate (NUMBER field) value"
+    )
     milestone: str | None = Field(
         default=None, description="Milestone title for the issue"
     )
@@ -81,6 +92,14 @@ class CreateProjectItemInput(BaseModel):
     labels: list[str] | None = Field(
         default=None, description="Label names to apply"
     )
+    apply_defaults: bool = Field(
+        default=True,
+        description=(
+            "Fill omitted board fields (Priority, Area, Estimate, Due date, "
+            "Work Type, Status) with configured defaults so the item never "
+            "lands with empty custom fields (issue #14). Default True."
+        ),
+    )
 
 
 async def create_project_item(
@@ -88,10 +107,14 @@ async def create_project_item(
     body: str = "",
     status: str | None = None,
     priority: str | None = None,
+    area: str | None = None,
+    work_type: str | None = None,
+    estimate: float | None = None,
     milestone: str | None = None,
     due_date: str | None = None,
     assignees: list[str] | None = None,
     labels: list[str] | None = None,
+    apply_defaults: bool = True,
 ) -> dict:
     """Create a new issue and add it to the GitHub Project board.
 
@@ -270,16 +293,28 @@ async def create_project_item(
             request_id=getattr(exc, "request_id", None),
         ).model_dump()
 
-    # â”€â”€ Step 7: Set optional fields on the project item â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    fields_to_set: list[tuple[str, str | float]] = []
-    if status is not None:
-        fields_to_set.append(("Status", status))
-    if priority is not None:
-        fields_to_set.append(("Priority", priority))
-    if due_date is not None:
-        fields_to_set.append(("Due date", due_date))
+    # ── Step 7: Set fields on the project item (with defaults) ──────────────
+    # Explicitly-provided board values, keyed by canonical field name.
+    provided: dict[str, object] = {
+        "Status": status,
+        "Priority": priority,
+        "Area": area,
+        "Work Type": work_type,
+        "Estimate": estimate,
+        "Due date": due_date,
+    }
 
-    for field_name, field_value in fields_to_set:
+    if apply_defaults:
+        effective_fields = compute_defaults(
+            metadata=metadata,
+            settings=get_settings(),
+            provided=provided,
+            labels=labels,
+        )
+    else:
+        effective_fields = {k: v for k, v in provided.items() if v is not None}
+
+    for field_name, field_value in effective_fields.items():
         try:
             await project_service.update_field(
                 metadata=metadata,

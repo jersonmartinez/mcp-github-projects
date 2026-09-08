@@ -228,8 +228,9 @@ Para configuración específica por IDE, ver [docs/SETUP.md](docs/SETUP.md#ide-i
 |------|-------------|
 | `discover_ids` | Discover project/field IDs |
 | `list_project_items` | List items with filters |
-| `create_project_item` | Create issue + add to project |
-| `update_project_item_fields` | Update Status, Priority, Due date |
+| `create_project_item` | Create issue + add to project (all board fields + defaults) |
+| `update_project_item_fields` | Set any board field — Status/Priority/Area/Work Type (SINGLE_SELECT), Estimate (NUMBER), Due date (DATE); by item id or issue/PR number |
+| `add_item_to_project` | Add an existing issue/PR to the board (owner-type aware) |
 | `set_estimate` | Set story point estimate |
 | `archive_project_item` | Archive item from board |
 
