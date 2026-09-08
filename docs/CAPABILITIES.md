@@ -209,6 +209,7 @@ organized by capability domain. Use this to configure least-privilege tokens.
 | `validate_issue_closure_readiness` | `issues.read`, `pull_requests.read`, `comments.read` | pr_issue_lifecycle.py |
 | `close_issue_on_pr_merge` | `issues.write`, `pull_requests.read`, `comments.write` | pr_issue_lifecycle.py |
 | `link_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
+| `create_pull_request` | `pull_requests.write`, `issues.write` | nice_to_have.py |
 
 ### Workflow Orchestration
 

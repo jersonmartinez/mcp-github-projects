@@ -149,6 +149,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "validate_issue_closure_readiness": frozenset({IR, PRR, CR}),
     "close_issue_on_pr_merge": frozenset({IW, PRR, CW}),
     "link_pull_request": frozenset({PRW, IW}),
+    "create_pull_request": frozenset({PRW, IW}),
 
     # --- Workflow Orchestration ---
     "daily_standup": frozenset({PR, IR, CW}),

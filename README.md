@@ -48,6 +48,18 @@ MCP Client → docker run --rm -i github-project-mcp:latest → stdin/stdout JSO
 4. El cliente envía JSON-RPC via stdin, recibe respuestas por stdout
 5. Al finalizar, el contenedor se destruye automáticamente (`--rm`)
 
+### Pull Requests
+
+The server can open pull requests directly (no `gh` fallback needed):
+
+- `create_pull_request` — opens a PR via the GitHub REST API
+  (`POST /repos/{owner}/{repo}/pulls`). Params: `title` (required),
+  `head` (required), `base` (default `main`), `body`, `draft` (default `false`),
+  and an optional `link_to_issue` that links the new PR to an issue.
+- `link_pull_request` — links an existing PR to an issue.
+
+See [docs/USAGE.md](docs/USAGE.md) for full input/output schemas and examples.
+
 ## Docker — Construir y Gestionar
 
 ### Construir la imagen
