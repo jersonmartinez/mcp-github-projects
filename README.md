@@ -131,6 +131,47 @@ El script `./scripts/dev/start.sh` soporta un argumento `mcp` para gestionar la 
 
 > **Nota**: El MCP no es un servicio persistente. No necesita `up/down/restart`. Se lanza bajo demanda cada vez que el cliente usa una herramienta.
 
+## CLI client (`scripts/mcp_call.py` / `make call`)
+
+For quick ops, debugging, or scripting, you can call a single MCP tool over
+stdio without wiring up a full MCP client. The bundled client performs the
+FastMCP handshake (`initialize` → `notifications/initialized` → `tools/call`)
+for you and prints the tool's JSON response.
+
+The convenient path is the `call` Makefile target, which runs the client
+inside the Docker image using your `.env` for token and project context:
+
+```bash
+make call TOOL=list_labels
+make call TOOL=get_issue_detail ARGS='{"issue_number": 1}'
+```
+
+A few tools (e.g. `create_project_item`) take **flat** arguments instead of the
+default `params`-wrapped form; pass `FLAGS='--flat'` for those:
+
+```bash
+make call TOOL=create_project_item ARGS='{"title": "Hello"}' FLAGS='--flat'
+```
+
+You can also invoke the script directly (inside the container, or on a host
+with the dependencies installed). The token is resolved from `GITHUB_TOKEN`
+then `GH_TOKEN` and is never printed or logged:
+
+```bash
+python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
+```
+
+| Argument / flag | Meaning |
+|-----------------|---------|
+| `TOOL` | Tool name to call (e.g. `list_labels`). |
+| `JSON_ARGS` | Tool arguments as a JSON object. Default `{}`. |
+| `--flat` | Send flat kwargs instead of a `params` wrapper. |
+| `--raw` | Print the full JSON-RPC envelope, not just the result. |
+
+The process exit code is `0` on success and non-zero when the tool reports an
+error (`isError: true`) or no response is received. See
+[docs/USAGE.md](docs/USAGE.md#cli-client) for more examples.
+
 ## IDE Integration
 
 El MCP es compatible con cualquier cliente que soporte el protocolo MCP sobre stdio.

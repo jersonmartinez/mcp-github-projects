@@ -78,6 +78,12 @@ shell: _check_env ## Drop into a shell inside the MCP container
 run: _check_env ## Start MCP server (stdio mode)
 	@$(COMPOSE) run --rm mcp
 
+.PHONY: call
+call: _check_env ## Call one MCP tool over stdio: make call TOOL=list_labels ARGS='{}'
+	@test -n "$(TOOL)" || { echo "❌ Usage: make call TOOL=<tool> [ARGS='{...}'] [FLAGS='--flat']"; exit 1; }
+	@docker run --rm -i --env-file $(ENV_FILE) $(IMAGE) \
+		python3 scripts/mcp_call.py $(TOOL) '$(or $(ARGS),{})' $(FLAGS)
+
 # ── Security ─────────────────────────────────────────────────────────────────
 .PHONY: secrets
 secrets: ## Scan for leaked credentials in source tree
