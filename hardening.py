@@ -1,13 +1,13 @@
-"""Backward-compatibility shim — canonical module is `core.hardening`.
+"""Backward-compatibility shim.
 
-This module aliases the canonical module in sys.modules so the historical
-path (`hardening`) and `core.hardening` are the SAME object. New code MUST import from
+Canonical module: `core.hardening`.
+Historical path `hardening` is aliased to it via sys.modules so both resolve to
+the SAME module object — attribute access and unittest.mock.patch on the old
+path operate on the canonical module itself. New code MUST import from
 `core.hardening`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
 import sys
 
 import core.hardening as _canonical
 
-# Make `hardening` an alias of `core.hardening`: attribute access and mock.patch on the
-# old path operate on the canonical module object itself.
 sys.modules[__name__] = _canonical

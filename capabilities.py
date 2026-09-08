@@ -1,13 +1,13 @@
-"""Backward-compatibility shim — canonical module is `core.capabilities`.
+"""Backward-compatibility shim.
 
-This module aliases the canonical module in sys.modules so the historical
-path (`capabilities`) and `core.capabilities` are the SAME object. New code MUST import from
+Canonical module: `core.capabilities`.
+Historical path `capabilities` is aliased to it via sys.modules so both resolve to
+the SAME module object — attribute access and unittest.mock.patch on the old
+path operate on the canonical module itself. New code MUST import from
 `core.capabilities`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
 import sys
 
 import core.capabilities as _canonical
 
-# Make `capabilities` an alias of `core.capabilities`: attribute access and mock.patch on the
-# old path operate on the canonical module object itself.
 sys.modules[__name__] = _canonical

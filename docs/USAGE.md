@@ -485,47 +485,51 @@ The server runs inside the backend Docker container, communicating with Kiro via
 ### File Structure
 
 ```
-app/backend/app/mcp/github_project/
-├── server.py              ← Entry point (40 tools registered)
-├── auth.py                ← Token resolution + scope validation
-├── config.py              ← Pydantic settings (env prefix: GH_PROJECT_)
-├── error_handling.py      ← Unified error response builder
-├── exceptions.py          ← Custom exception types
+mcp-github-projects/
+├── server.py                    ← Entry point (registers every tool)
+├── __main__.py                  ← `python -m` shim
+├── core/                        ← Cross-cutting infrastructure
+│   ├── auth.py                  ← Token resolution + scope validation
+│   ├── config.py                ← Pydantic settings (env prefix: GH_PROJECT_)
+│   ├── error_handling.py        ← Unified error response builder
+│   ├── exceptions.py            ← Custom exception types
+│   ├── hardening.py             ← Input parsing, redaction, atomic writes
+│   ├── profiles.py              ← Multi-target profile system
+│   └── capabilities.py          ← Tool → permission mapping
 ├── clients/
-│   ├── gh_cli_client.py   ← Async wrapper for `gh` CLI
-│   ├── graphql_client.py  ← GraphQL API client
-│   └── cache_manager.py   ← File-based cache with TTL
+│   ├── gh_cli_client.py         ← Async wrapper for `gh` CLI
+│   ├── graphql_client.py        ← GraphQL API client
+│   └── cache_manager.py         ← File-based cache with TTL
 ├── models/
-│   └── responses.py       ← ToolSuccess/ToolError response models
+│   └── responses.py             ← ToolSuccess/ToolError response models
 ├── services/
-│   ├── discovery_service.py ← Project metadata discovery
-│   ├── project_service.py   ← Field updates via GraphQL
-│   └── issue_service.py     ← Issue operations via CLI
-├── tools/
-│   ├── discover.py          ← discover_ids
-│   ├── list_items.py        ← list_project_items
-│   ├── create_item.py       ← create_project_item
-│   ├── update_fields.py     ← update_project_item_fields
-│   ├── estimate.py          ← set_estimate
-│   ├── archive.py           ← archive, move_to_done, move_to_trash
-│   ├── close.py             ← close_issue
-│   ├── comment_issue.py     ← comment_issue
-│   ├── edit_issue.py        ← edit_issue
-│   ├── add_sub_issue.py     ← add_sub_issue
-│   ├── advanced_operations.py ← move_to_status, bulk_update, get_detail, sub-issues, reopen
-│   ├── milestones.py        ← create/close/list milestones
-│   ├── labels.py            ← create/list labels
-│   ├── bulk_operations.py   ← bulk_close, search_issues
-│   ├── nice_to_have.py      ← stats, sprint_summary, link_pr, bulk_assign
-│   ├── planning.py          ← sprint_planning, generate_release_notes
-│   └── workflows.py         ← complete, standup, review, triage, escalate, handoff, epic, close_sprint, blocked
+│   ├── discovery_service.py     ← Project metadata discovery
+│   ├── project_service.py       ← Field updates via GraphQL
+│   ├── issue_service.py         ← Issue operations via CLI
+│   ├── field_service.py         ← Field value resolution/validation
+│   └── owner_type_resolver.py   ← user vs organization auto-detection
+├── tools/                       ← MCP tools, grouped by category
+│   ├── discovery/               ← discover_ids, list_project_items
+│   ├── issues/                  ← create/edit/close/reopen, comment, sub-issues, detail
+│   ├── pull_requests/           ← acceptance criteria, linked issues, closure readiness
+│   ├── projects/                ← move_to_status/done/trash, archive, update_fields
+│   ├── fields/                  ← set_estimate, labels, milestones
+│   ├── planning/                ← sprint_planning, release notes, epics, standup, review
+│   ├── bulk/                    ← bulk_close, search_issues
+│   └── meta/                    ← stats, sprint_summary, link/create_pr, bulk_assign,
+│                                  capability_suite (60 tools)
 └── docs/
-    ├── USAGE.md             ← This file
-    ├── SETUP.md             ← Installation & configuration
-    ├── PARAMETERS.md        ← Environment variables reference
-    ├── GRAPHQL_REFERENCE.md ← GraphQL queries used
-    └── TROUBLESHOOTING.md   ← Common issues & fixes
+    ├── architecture/PROJECT_STRUCTURE.md ← Layout & conventions (authoritative)
+    ├── USAGE.md                 ← This file
+    ├── SETUP.md                 ← Installation & configuration
+    ├── PARAMETERS.md            ← Environment variables reference
+    ├── GRAPHQL_REFERENCE.md     ← GraphQL queries used
+    └── TROUBLESHOOTING.md       ← Common issues & fixes
 ```
+
+> Historical flat module paths (`config.py`, `tools/workflows.py`, …) remain as
+> thin backward-compatibility shims that alias the new homes. See
+> [architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md).
 
 ---
 

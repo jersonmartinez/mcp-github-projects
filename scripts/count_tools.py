@@ -8,7 +8,7 @@ import os
 
 os.chdir("/app")
 
-import auth
+import core.auth as auth
 
 
 async def noop(_: str) -> None:

@@ -1,13 +1,13 @@
-"""Backward-compatibility shim — canonical module is `core.config`.
+"""Backward-compatibility shim.
 
-This module aliases the canonical module in sys.modules so the historical
-path (`config`) and `core.config` are the SAME object. New code MUST import from
+Canonical module: `core.config`.
+Historical path `config` is aliased to it via sys.modules so both resolve to
+the SAME module object — attribute access and unittest.mock.patch on the old
+path operate on the canonical module itself. New code MUST import from
 `core.config`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
 import sys
 
 import core.config as _canonical
 
-# Make `config` an alias of `core.config`: attribute access and mock.patch on the
-# old path operate on the canonical module object itself.
 sys.modules[__name__] = _canonical
