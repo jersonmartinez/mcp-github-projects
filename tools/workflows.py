@@ -13,10 +13,14 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from auth import resolve_token
+from clients.cache_manager import CacheManager
 from clients.gh_cli_client import CLIError, GHCLIClient
+from clients.graphql_client import GraphQLClient
 from config import get_settings
 from error_handling import build_error_response, handle_tool_error
 from models.responses import ToolSuccess
+from services.discovery_service import DiscoveryService
+from services.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -60,19 +64,27 @@ class CreateEpicInput(BaseModel):
     title: str = Field(description="Epic title")
     body: str = Field(description="Epic description")
     sub_tasks: list[str] = Field(
+        default_factory=list,
         max_length=20,
-        description="List of sub-task titles to create (maximum 20)",
+        description="List of sub-task titles to create as NEW sub-issues (maximum 20)",
+    )
+    link_existing: Optional[list[int]] = Field(
+        default=None,
+        description="Existing issue numbers to link as sub-issues of the epic (no new issues created)",
     )
     milestone: Optional[str] = Field(default=None, description="Milestone to assign")
     assignee: Optional[str] = Field(default=None, description="Default assignee for all")
     labels: Optional[list[str]] = Field(default=None, description="Labels for all issues")
     status: Optional[str] = Field(
-        default="📢 Proposal",
-        description="Project board status for created items (default: 📢 Proposal)",
+        default=None,
+        description=(
+            "Project board Status option to set on created items. Must match an option "
+            "of the board's Status field. Defaults to the board's first Status option."
+        ),
     )
     priority: Optional[str] = Field(
         default=None,
-        description="Project board priority (Urgent, Important, Not urgent, Not important)",
+        description="Project board Priority option name (must match the board's Priority field options)",
     )
 
 
@@ -328,85 +340,143 @@ async def handoff_issue(params: HandoffIssueInput) -> dict:
         return handle_tool_error(exc, context="Handoff failed")
 
 
-# ── Project Board Field Defaults ─────────────────────────────────────────────
-
-# Mapping of status names to project field option IDs.
-_STATUS_OPTIONS: dict[str, str] = {
-    "📢 Proposal": "f75ad846",
-    "📌 To Do": "47fc9ee4",
-    "🛠 In Progress": "98236657",
-    "⏸ Pending": "6a7e9d0d",
-    "✅ Done": "950b2fa1",
-    "🗑️ Trash": "cb0f478a",
-}
-
-_PRIORITY_OPTIONS: dict[str, str] = {
-    "Urgent": "631f13e6",
-    "Important": "97ef5528",
-    "Not urgent": "1d80676c",
-    "Not important": "aa28dbfd",
-}
-
-# Project field IDs (configured via target).
-_PROJECT_ID = "PVT_kwDOCg8zFs4A2iZ_"
-_STATUS_FIELD_ID = "PVTSSF_lADOCg8zFs4A2iZ_zgr0_v4"
-_PRIORITY_FIELD_ID = "PVTSSF_lADOCg8zFs4A2iZ_zgr0_wk"
+# ── Project Board Field Defaults (resolved at runtime) ───────────────────────
+#
+# Project/field/option IDs are NOT hardcoded: they are discovered at runtime
+# from the GH_PROJECT_* context via DiscoveryService (mirroring
+# create_project_item / discover.py), so create_epic works against any board.
 
 
-async def _set_project_item_defaults(
-    gh: GHCLIClient,
+def _default_status(metadata) -> str | None:
+    """Return a sensible default Status option name for the board.
+
+    Uses the first option of the board's Status single-select field, so the
+    epic lands in the board's initial column without assuming any
+    project-specific label. Returns None if the board has no Status field
+    or no options (in which case Status is simply left unset).
+
+    Args:
+        metadata: Discovered ProjectMetadata for the target board.
+
+    Returns:
+        The first Status option name, or None.
+    """
+    status_field = metadata.fields.get("Status")
+    if status_field and status_field.options:
+        return status_field.options[0].name
+    return None
+
+
+async def _set_item_fields(
+    project_service: ProjectService,
+    metadata,
     item_id: str,
     *,
-    status: str | None = "📢 Proposal",
-    priority: str | None = None,
+    status: str | None,
+    priority: str | None,
 ) -> None:
-    """Set default project board fields on a newly-added item.
+    """Set Status/Priority on a project item using runtime-resolved field IDs.
+
+    Field and option IDs are resolved from the discovered board metadata by
+    ProjectService.update_field (single-select values are matched by option
+    name). Failures are logged and swallowed so a single unsettable field
+    never aborts the whole epic creation.
+
+    Args:
+        project_service: Project service bound to the discovered board.
+        metadata: Discovered ProjectMetadata.
+        item_id: Project item node ID to update.
+        status: Status option name to set (optional).
+        priority: Priority option name to set (optional).
+    """
+    if status:
+        try:
+            await project_service.update_field(
+                metadata=metadata, item_id=item_id,
+                field_name="Status", value=status,
+            )
+        except Exception as exc:
+            logger.warning("Failed to set Status on item %s: %s", item_id, exc)
+
+    if priority:
+        try:
+            await project_service.update_field(
+                metadata=metadata, item_id=item_id,
+                field_name="Priority", value=priority,
+            )
+        except Exception as exc:
+            logger.warning("Failed to set Priority on item %s: %s", item_id, exc)
+
+
+async def _link_sub_issue(gh: GHCLIClient, parent_node_id: str, sub_node_id: str) -> None:
+    """Link a child issue as a sub-issue of the parent via the GraphQL API.
 
     Args:
         gh: Authenticated GH CLI client.
-        item_id: Project item ID returned by 'gh project item-add --format json'.
-        status: Status name to set (default: 📢 Proposal).
-        priority: Priority name to set (optional).
+        parent_node_id: Parent (epic) issue node ID.
+        sub_node_id: Child issue node ID.
     """
-    if status and status in _STATUS_OPTIONS:
-        try:
-            await gh.run([
-                "project", "item-edit",
-                "--project-id", _PROJECT_ID,
-                "--id", item_id,
-                "--field-id", _STATUS_FIELD_ID,
-                "--single-select-option-id", _STATUS_OPTIONS[status],
-            ])
-        except CLIError as exc:
-            logger.warning("Failed to set status on item %s: %s", item_id, exc.stderr)
-
-    if priority and priority in _PRIORITY_OPTIONS:
-        try:
-            await gh.run([
-                "project", "item-edit",
-                "--project-id", _PROJECT_ID,
-                "--id", item_id,
-                "--field-id", _PRIORITY_FIELD_ID,
-                "--single-select-option-id", _PRIORITY_OPTIONS[priority],
-            ])
-        except CLIError as exc:
-            logger.warning("Failed to set priority on item %s: %s", item_id, exc.stderr)
+    if not (parent_node_id and sub_node_id):
+        return
+    mutation = """
+    mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
+      addSubIssue(input: {issueId: $issueId, subIssueId: $subIssueId}) {
+        issue { number }
+      }
+    }
+    """
+    try:
+        await gh.api_graphql(
+            mutation,
+            {"issueId": parent_node_id, "subIssueId": sub_node_id},
+        )
+    except Exception as exc:
+        logger.warning("Failed to link sub-issue: %s", exc)
 
 
 async def create_epic(params: CreateEpicInput) -> dict:
-    """Create epic (parent) with sub-issues linked in one call.
+    """Create an epic (parent issue) and link its sub-issues in one call.
+
+    Sub-issues can be created from ``sub_tasks`` titles and/or linked from
+    ``link_existing`` issue numbers. All project/field/option IDs are resolved
+    at runtime from the GH_PROJECT_* context (via DiscoveryService), so the
+    tool works against any board — no hardcoded board IDs or status labels.
 
     Args:
-        params: Epic details and sub-task titles.
+        params: Epic details, sub-task titles, and/or existing issue numbers.
     Returns:
-        ToolSuccess with created issue numbers.
+        ToolSuccess with created/linked issue numbers.
     """
     try:
-        await resolve_token()
+        token = await resolve_token()
         settings = get_settings()
         repo = f"{settings.org_name}/{settings.repo_name}"
         gh = GHCLIClient()
 
+        graphql_client = GraphQLClient(token=token)
+        cache_manager = CacheManager()
+        discovery_service = DiscoveryService(
+            graphql_client=graphql_client,
+            cache_manager=cache_manager,
+        )
+        project_service = ProjectService(
+            graphql_client=graphql_client,
+            gh_client=gh,
+        )
+
+        # Resolve the board metadata (project id, field ids, option ids) once.
+        try:
+            metadata = await discovery_service.get_cached_or_discover()
+        except Exception as exc:
+            logger.warning("Discovery failed in create_epic (fields will be skipped): %s", exc)
+            metadata = None
+
+        # Choose the Status option: caller value, else the board's first option.
+        status_to_set = params.status
+        if status_to_set is None and metadata is not None:
+            status_to_set = _default_status(metadata)
+
+        # ── Create the parent epic issue ─────────────────────────────────────
         parent_args = ["issue", "create", "--repo", repo, "--title", params.title, "--body", params.body]
         if params.milestone:
             parent_args.extend(["--milestone", params.milestone])
@@ -420,48 +490,28 @@ async def create_epic(params: CreateEpicInput) -> dict:
         parent_url = parent_result.stdout.strip()
         parent_number = int(parent_url.rstrip("/").split("/")[-1])
 
-        parent_add_result = await gh.run([
-            "project",
-            "item-add",
-            str(settings.project_number),
-            "--owner",
-            settings.org_name,
-            "--url",
-            parent_url,
-            "--format",
-            "json",
-        ])
-        parent_item_data = json.loads(parent_add_result.stdout.strip())
-        parent_item_id = parent_item_data.get("id", "")
-
-        if parent_item_id:
-            await _set_project_item_defaults(gh, parent_item_id, params.status, params.priority)
-
-        # Set project board fields on the parent epic.
-        try:
-            parent_item_result = await gh.run([
-                "project", "item-list", str(settings.project_number),
-                "--owner", settings.org_name,
-                "--format", "json", "--limit", "200",
-            ])
-            parent_items = json.loads(parent_item_result.stdout)
-            parent_item_id = None
-            for item in parent_items.get("items", []):
-                if item.get("content", {}).get("number") == parent_number:
-                    parent_item_id = item.get("id")
-                    break
-            if parent_item_id:
-                await _set_project_item_defaults(
-                    gh, parent_item_id,
-                    status=params.status,
-                    priority=params.priority,
+        # Add the epic to the board and set its fields at runtime.
+        if metadata is not None:
+            try:
+                parent_item_id = await project_service.add_item(
+                    metadata=metadata, issue_number=parent_number,
                 )
-        except (CLIError, json.JSONDecodeError) as exc:
-            logger.warning("Could not set project fields on epic: %s", exc)
+                if parent_item_id:
+                    await _set_item_fields(
+                        project_service, metadata, parent_item_id,
+                        status=status_to_set, priority=params.priority,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Could not add/set board fields for epic #%d: %s", parent_number, exc
+                )
 
-        parent_node = await gh.run(["api", f"repos/{repo}/issues/{parent_number}", "--jq", ".node_id"])
+        parent_node = await gh.run([
+            "api", f"repos/{repo}/issues/{parent_number}", "--jq", ".node_id",
+        ])
         parent_node_id = parent_node.stdout.strip()
 
+        # ── Create NEW sub-issues from titles ────────────────────────────────
         sub_issues: list[dict] = []
         for task_title in params.sub_tasks:
             sub_args = ["issue", "create", "--repo", repo, "--title", task_title,
@@ -478,68 +528,49 @@ async def create_epic(params: CreateEpicInput) -> dict:
             sub_url = sub_result.stdout.strip()
             sub_number = int(sub_url.rstrip("/").split("/")[-1])
 
-            sub_add_result = await gh.run([
-                "project",
-                "item-add",
-                str(settings.project_number),
-                "--owner",
-                settings.org_name,
-                "--url",
-                sub_url,
-                "--format",
-                "json",
-            ])
-            sub_item_data = json.loads(sub_add_result.stdout.strip())
-            sub_item_id = sub_item_data.get("id", "")
-
-            if sub_item_id:
-                await _set_project_item_defaults(gh, sub_item_id, params.status, params.priority)
-
-            # Set project board fields on each sub-issue.
-            try:
-                sub_items_result = await gh.run([
-                    "project", "item-list", str(settings.project_number),
-                    "--owner", settings.org_name,
-                    "--format", "json", "--limit", "200",
-                ])
-                sub_items_data = json.loads(sub_items_result.stdout)
-                sub_item_id = None
-                for item in sub_items_data.get("items", []):
-                    if item.get("content", {}).get("number") == sub_number:
-                        sub_item_id = item.get("id")
-                        break
-                if sub_item_id:
-                    await _set_project_item_defaults(
-                        gh, sub_item_id,
-                        status=params.status,
-                        priority=params.priority,
-                    )
-            except (CLIError, json.JSONDecodeError) as exc:
-                logger.warning("Could not set project fields on sub-issue #%d: %s", sub_number, exc)
-
-            sub_node = await gh.run(["api", f"repos/{repo}/issues/{sub_number}", "--jq", ".node_id"])
-            sub_node_id = sub_node.stdout.strip()
-            if parent_node_id and sub_node_id:
+            if metadata is not None:
                 try:
-                    mutation = """
-                    mutation AddSubIssue($issueId: ID!, $subIssueId: ID!) {
-                      addSubIssue(input: {issueId: $issueId, subIssueId: $subIssueId}) {
-                        issue { number }
-                      }
-                    }
-                    """
-                    await gh.api_graphql(
-                        mutation,
-                        {"issueId": parent_node_id, "subIssueId": sub_node_id},
+                    sub_item_id = await project_service.add_item(
+                        metadata=metadata, issue_number=sub_number,
                     )
-                except Exception:
-                    pass
-            sub_issues.append({"number": sub_number, "title": task_title})
+                    if sub_item_id:
+                        await _set_item_fields(
+                            project_service, metadata, sub_item_id,
+                            status=status_to_set, priority=params.priority,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not add/set board fields for sub-issue #%d: %s", sub_number, exc
+                    )
+
+            sub_node = await gh.run([
+                "api", f"repos/{repo}/issues/{sub_number}", "--jq", ".node_id",
+            ])
+            await _link_sub_issue(gh, parent_node_id, sub_node.stdout.strip())
+            sub_issues.append({"number": sub_number, "title": task_title, "created": True})
+
+        # ── Link EXISTING issues as sub-issues ───────────────────────────────
+        linked_existing: list[dict] = []
+        for existing_number in (params.link_existing or []):
+            try:
+                existing_node = await gh.run([
+                    "api", f"repos/{repo}/issues/{existing_number}", "--jq", ".node_id",
+                ])
+                await _link_sub_issue(gh, parent_node_id, existing_node.stdout.strip())
+                linked_existing.append({"number": existing_number, "linked": True})
+            except CLIError as exc:
+                logger.warning("Could not link existing issue #%d: %s", existing_number, exc.stderr)
+                linked_existing.append({"number": existing_number, "linked": False})
 
         return ToolSuccess(data={
             "parent_issue": parent_number, "parent_url": parent_url,
             "sub_issues": sub_issues, "sub_issues_count": len(sub_issues),
-            "message": f"Epic #{parent_number} created with {len(sub_issues)} sub-tasks.",
+            "linked_existing": linked_existing, "linked_existing_count": len(linked_existing),
+            "status_applied": status_to_set,
+            "message": (
+                f"Epic #{parent_number} created with {len(sub_issues)} new sub-task(s) "
+                f"and {len(linked_existing)} linked existing issue(s)."
+            ),
         }).model_dump()
     except CLIError as exc:
         return build_error_response("internal", f"Create epic failed: {exc.stderr.strip()}", "Check inputs.")
