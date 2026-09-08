@@ -1,0 +1,1 @@
+"""MCP tools — discovery category."""

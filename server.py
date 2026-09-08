@@ -15,26 +15,26 @@ import sys
 
 from fastmcp import FastMCP
 
-from auth import resolve_token, validate_scopes
-from config import get_settings
-from tools.archive import (
+from core.auth import resolve_token, validate_scopes
+from core.config import get_settings
+from tools.projects.archive import (
     archive_project_item,
     move_to_done,
     move_to_trash,
 )
-from tools.close import close_issue
-from tools.comment_issue import comment_issue
-from tools.add_sub_issue import add_sub_issue
-from tools.edit_issue import edit_issue
-from tools.create_item import create_project_item
-from tools.discover import discover_ids
-from tools.estimate import set_estimate
-from tools.list_items import list_project_items
-from tools.update_fields import update_project_item_fields
-from tools.milestones import create_milestone, close_milestone, list_milestones
-from tools.labels import create_label, list_labels
-from tools.bulk_operations import bulk_close_issues, search_issues
-from tools.advanced_operations import (
+from tools.issues.close import close_issue
+from tools.issues.comment_issue import comment_issue
+from tools.issues.add_sub_issue import add_sub_issue
+from tools.issues.edit_issue import edit_issue
+from tools.issues.create_item import create_project_item
+from tools.discovery.discover import discover_ids
+from tools.fields.estimate import set_estimate
+from tools.discovery.list_items import list_project_items
+from tools.projects.update_fields import update_project_item_fields
+from tools.fields.milestones import create_milestone, close_milestone, list_milestones
+from tools.fields.labels import create_label, list_labels
+from tools.bulk.bulk_operations import bulk_close_issues, search_issues
+from tools.issues.advanced_operations import (
     move_to_status,
     bulk_update_items,
     get_issue_detail,
@@ -42,18 +42,18 @@ from tools.advanced_operations import (
     remove_sub_issue,
     reopen_issue,
 )
-from tools.nice_to_have import (
+from tools.meta.nice_to_have import (
     get_project_stats,
     get_sprint_summary,
     link_pull_request,
     create_pull_request,
     bulk_assign,
 )
-from tools.planning import (
+from tools.planning.planning import (
     sprint_planning,
     generate_release_notes,
 )
-from tools.workflows import (
+from tools.planning.workflows import (
     complete_issue as complete_issue_workflow,
     daily_standup,
     sprint_review,
@@ -64,13 +64,13 @@ from tools.workflows import (
     close_sprint,
     blocked_report,
 )
-from tools.pr_issue_lifecycle import (
+from tools.pull_requests.pr_issue_lifecycle import (
     verify_acceptance_criteria,
     get_pr_linked_issues,
     validate_issue_closure_readiness,
     close_issue_on_pr_merge,
 )
-from tools import capability_suite
+from tools.meta import capability_suite
 
 # ── FastMCP Server Instance ──────────────────────────────────────────────────
 

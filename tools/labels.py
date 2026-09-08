@@ -1,115 +1,15 @@
-"""MCP tools for GitHub label management.
+"""Backward-compatibility shim — canonical module is `tools.fields.labels`.
 
-Exposes tools for creating and listing labels in the repository.
+This module re-exports the canonical implementation so historical imports
+(`tools.labels`) keep resolving. New code MUST import from `tools.fields.labels`.
+See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
-from __future__ import annotations
+import tools.fields.labels as _canon  # noqa: E402
 
-import json
-import logging
-from typing import Optional
-
-from pydantic import BaseModel, Field
-
-from auth import resolve_token
-from clients.gh_cli_client import CLIError, GHCLIClient
-from config import get_settings
-from error_handling import build_error_response, handle_tool_error
-from models.responses import ToolSuccess
-
-logger = logging.getLogger(__name__)
-
-
-class CreateLabelInput(BaseModel):
-    """Input schema for the create_label tool."""
-
-    name: str = Field(description="Label name (e.g., '🔒 Security')")
-    color: str = Field(description="Hex color without # (e.g., 'd93f0b')")
-    description: Optional[str] = Field(default=None, description="Label description")
-
-
-class ListLabelsInput(BaseModel):
-    """Input schema for the list_labels tool."""
-
-    limit: int = Field(default=50, description="Max labels to return")
-
-
-async def create_label(params: CreateLabelInput) -> dict:
-    """Create a new label in the repository.
-
-    If the label already exists, updates it (force behavior).
-
-    Args:
-        params: Input containing name, color, and optional description.
-
-    Returns:
-        ToolSuccess with label details on success.
-    """
-    try:
-        await resolve_token()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
-
-        args = ["label", "create", params.name, "--repo", repo,
-                "--color", params.color, "--force"]
-
-        if params.description:
-            args.extend(["--description", params.description])
-
-        await gh_client.run(args)
-
-        return ToolSuccess(
-            data={
-                "name": params.name,
-                "color": params.color,
-                "message": f"Label '{params.name}' created/updated successfully.",
-            },
-        ).model_dump()
-
-    except CLIError as exc:
-        logger.error("CLI error in create_label: %s", exc)
-        return build_error_response(
-            error_type="internal",
-            message=f"Failed to create label: {exc.stderr.strip()}",
-            suggestion="Check label name format and token permissions.",
-        )
-    except Exception as exc:
-        logger.error("Error in create_label: %s", exc)
-        return handle_tool_error(exc, context="Create label failed")
-
-
-async def list_labels(params: ListLabelsInput) -> dict:
-    """List all labels in the repository.
-
-    Args:
-        params: Input containing limit for results.
-
-    Returns:
-        ToolSuccess with list of labels.
-    """
-    try:
-        await resolve_token()
-        settings = get_settings()
-        repo = f"{settings.org_name}/{settings.repo_name}"
-        gh_client = GHCLIClient()
-
-        result = await gh_client.run([
-            "label", "list", "--repo", repo, "--limit", str(params.limit),
-            "--json", "name,color,description",
-        ])
-        labels = json.loads(result.stdout)
-
-        return ToolSuccess(
-            data={"labels": labels, "count": len(labels)},
-        ).model_dump()
-
-    except CLIError as exc:
-        logger.error("CLI error in list_labels: %s", exc)
-        return build_error_response(
-            error_type="internal",
-            message=f"Failed to list labels: {exc.stderr.strip()}",
-            suggestion="Check token permissions.",
-        )
-    except Exception as exc:
-        logger.error("Error in list_labels: %s", exc)
-        return handle_tool_error(exc, context="List labels failed")
+# Re-export every module-level name (including non-__all__ symbols such as
+# imported client classes that tests patch) so `patch('tools.labels.X')` resolves
+# against the SAME object the canonical module uses.
+globals().update(
+    {k: v for k, v in vars(_canon).items() if not k.startswith('__')}
+)
+del _canon
