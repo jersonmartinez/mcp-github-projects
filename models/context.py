@@ -129,9 +129,19 @@ class GitHubContext:
 
             token_provider = resolve_token
 
+        owner_login = settings.org_name
+        owner_type = getattr(settings, "owner_type", "auto")
+        # 'auto' (or any unrecognised value) triggers runtime detection so a
+        # user-owned board works without GH_PROJECT_OWNER_TYPE=user. Explicit
+        # 'organization'/'user' short-circuit detection (backward compatible).
+        if owner_type not in ("organization", "user"):
+            from services.owner_type_resolver import resolve_owner_type_sync
+
+            owner_type = resolve_owner_type_sync(owner_login)
+
         target = ProjectTarget(
-            owner_type=getattr(settings, "owner_type", "organization"),
-            owner_login=settings.org_name,
+            owner_type=owner_type,
+            owner_login=owner_login,
             project_number=settings.project_number,
             repository=settings.repo_name,
         )
