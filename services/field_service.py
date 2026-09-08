@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 
 from clients.graphql_client import GraphQLClient
-from config import get_settings
-from exceptions import ValidationError
+from core.config import get_settings
+from core.exceptions import ValidationError
 from graphql.mutations import (
     CREATE_FIELD_MUTATION,
     UPDATE_FIELD_MUTATION,

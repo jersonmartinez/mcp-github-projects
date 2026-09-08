@@ -194,7 +194,7 @@ TOOL_COUNT=$(docker run --rm \
     "$IMAGE" python3 -c "
 import sys, asyncio; sys.path.insert(0, '/app')
 import os; os.chdir('/app')
-import auth
+import core.auth as auth
 async def noop(t): pass
 auth.validate_scopes = noop
 from server import mcp as s

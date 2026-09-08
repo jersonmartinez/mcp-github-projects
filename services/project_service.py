@@ -14,8 +14,8 @@ from datetime import date
 
 from clients.gh_cli_client import GHCLIClient
 from clients.graphql_client import GraphQLClient
-from config import get_settings
-from exceptions import ValidationError
+from core.config import get_settings
+from core.exceptions import ValidationError
 from graphql.mutations import (
     ARCHIVE_ITEM_MUTATION,
     UPDATE_FIELD_MUTATION,

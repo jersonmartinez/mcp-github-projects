@@ -12,7 +12,7 @@ import tempfile
 from dataclasses import dataclass
 
 from clients.gh_cli_client import CLIError, GHCLIClient
-from hardening import normalize_unique, parse_json_object
+from core.hardening import normalize_unique, parse_json_object
 from models.context import GitHubContext
 
 

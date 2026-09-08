@@ -11,8 +11,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from config import get_settings
-from hardening import bounded_text, redact_sensitive
+from core.config import get_settings
+from core.hardening import bounded_text, redact_sensitive
 from models.context import GitHubContext
 
 

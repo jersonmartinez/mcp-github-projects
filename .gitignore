@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local env / secrets (never commit tokens)
+.env
+*.env
+!profiles/*.env
+!.env.example
+
+# OS / editor
+.DS_Store

@@ -121,11 +121,11 @@ class GitHubContext:
         value model to the authentication module and to keep tests injectable.
         """
         if settings is None:
-            from config import get_settings
+            from core.config import get_settings
 
             settings = get_settings()
         if token_provider is None:
-            from auth import resolve_token
+            from core.auth import resolve_token
 
             token_provider = resolve_token
 

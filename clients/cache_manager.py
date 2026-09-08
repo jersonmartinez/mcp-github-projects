@@ -8,8 +8,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config import get_settings
-from hardening import atomic_write_json
+from core.config import get_settings
+from core.hardening import atomic_write_json
 from models.metadata import ProjectMetadata
 
 # Required top-level keys for a valid cache file.

@@ -7,32 +7,45 @@ Custom MCP (Model Context Protocol) server that enables AI assistants to program
 ## Location
 
 ```
-project/
-├── mcp/                    ← This directory (root-level, independent of the app)
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── server.py           # FastMCP entry point
+mcp-github-projects/          ← Standalone repo (own Dockerfile, deps, lifecycle)
+├── Dockerfile
+├── requirements.txt
+├── server.py                 # FastMCP entry point (registers every tool)
+├── __main__.py               # `python -m` shim
+├── core/                     # Cross-cutting infra (config, auth, errors, hardening)
 │   ├── config.py
 │   ├── auth.py
-│   ├── capabilities.py     # Tool → permission mapping
-│   ├── profiles.py         # Multi-target profile system
-│   ├── tools/              # MCP tool definitions
-│   ├── services/           # Business logic
-│   ├── clients/            # GraphQL + gh CLI clients
-│   ├── models/             # Pydantic models
-│   ├── graphql/            # Query/mutation strings
-│   ├── tests/              # Unit + contract tests
-│   ├── scripts/            # Validation, preflight, secret scanning
-│   │   ├── validate.sh     # ← Run before every push
-│   │   ├── preflight.sh    # Environment prerequisites
-│   │   ├── scan_secrets.sh # Token pattern detection
-│   │   └── smoke_build.sh  # Minimal build verification
-│   ├── profiles/           # Target config (.env files, no secrets)
-│   ├── docs/               # Detailed documentation
-│   ├── LICENSE             # MIT
-│   ├── CONTRIBUTING.md
-│   └── SECURITY.md
+│   ├── capabilities.py       # Tool → permission mapping
+│   ├── profiles.py           # Multi-target profile system
+│   ├── error_handling.py
+│   ├── exceptions.py
+│   └── hardening.py
+├── tools/                    # MCP tool definitions, grouped by category
+│   ├── discovery/            # ID discovery, board listing
+│   ├── issues/               # Issue CRUD, comments, sub-issues, lifecycle
+│   ├── pull_requests/        # PR ↔ issue linkage & closure readiness
+│   ├── projects/             # Board placement (status/done/trash/archive)
+│   ├── fields/               # Field, estimate, label, milestone writes
+│   ├── planning/             # Sprint planning, workflows, release notes
+│   ├── bulk/                 # Batch operations & search
+│   └── meta/                 # Reports, PR helpers, capability suite (60 tools)
+├── services/                 # Business logic (orchestrates clients + graphql)
+├── clients/                  # GraphQL + gh CLI clients
+├── models/                   # Pydantic models
+├── graphql/                  # Query/mutation strings
+├── tests/                    # Unit + contract tests
+├── scripts/                  # validate.sh, preflight.sh, scan_secrets.sh, …
+├── profiles/                 # Target config (.env files, no secrets)
+├── docs/                     # Detailed documentation
+│   └── architecture/PROJECT_STRUCTURE.md  # ← Layout & conventions (authoritative)
+├── LICENSE                   # MIT
+├── CONTRIBUTING.md
+└── SECURITY.md
 ```
+
+> Historical flat paths (`config.py`, `tools/workflows.py`, …) remain as thin
+> backward-compatibility shims that alias the new homes — see
+> [docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md).
 
 > **Note**: This MCP server is a standalone component with its own Dockerfile, dependencies, and lifecycle.
 
@@ -444,7 +457,7 @@ The complete 200-item register, including implemented and planned work, is in [`
 
 ## Extended capability suite: 60 additional tools
 
-The server exposes 100+ tools in total: the original 40 operational tools plus 60 focused capabilities from `tools/capability_suite.py`.
+The server exposes 100+ tools in total: the original 40 operational tools plus 60 focused capabilities from `tools/meta/capability_suite.py`.
 
 | Group | Purpose | Examples |
 |-------|---------|----------|

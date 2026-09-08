@@ -15,14 +15,14 @@ from datetime import UTC, datetime
 
 import httpx
 
-from config import get_settings
-from exceptions import (
+from core.config import get_settings
+from core.exceptions import (
     AuthenticationError,
     GraphQLError,
     RateLimitError,
     TimeoutError,
 )
-from hardening import bounded_text
+from core.hardening import bounded_text
 from models.context import GitHubContext
 
 logger = logging.getLogger(__name__)

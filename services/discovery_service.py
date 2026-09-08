@@ -13,8 +13,8 @@ from pathlib import Path
 
 from clients.cache_manager import CacheManager
 from clients.graphql_client import GraphQLClient
-from config import get_settings
-from exceptions import (
+from core.config import get_settings
+from core.exceptions import (
     AuthenticationError,
     GraphQLError,
     RateLimitError,
