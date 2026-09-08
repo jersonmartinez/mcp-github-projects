@@ -60,6 +60,13 @@ class CreatePullRequestInput(BaseModel):
         default=None,
         description="Optional issue number to link the new PR to via link_pull_request",
     )
+    add_to_project: bool = Field(
+        default=False,
+        description=(
+            "When true, also add the new PR to the configured project board "
+            "via add_item_to_project (issue #18)."
+        ),
+    )
 
 
 class BulkAssignInput(BaseModel):
@@ -329,6 +336,18 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
                 )
             )
             data["link_result"] = link_result
+
+        if params.add_to_project and pr_number is not None:
+            # Deferred import to avoid a tools→tools import cycle at load time.
+            from tools.projects.add_item import (
+                AddItemToProjectInput,
+                add_item_to_project,
+            )
+
+            add_result = await add_item_to_project(
+                AddItemToProjectInput(issue_or_pr_number=pr_number)
+            )
+            data["add_to_project_result"] = add_result
 
         return ToolSuccess(data=data).model_dump()
 

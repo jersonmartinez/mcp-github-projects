@@ -6,7 +6,7 @@ that a contributor (human or LLM) can place a new tool, module, or test correctl
 the first try, without reverse-engineering the layout.
 
 > **Scope:** organization and naming only. This document describes *structure*, not
-> behavior. The set of client-facing MCP tool names and the total tool count (**105**)
+> behavior. The set of client-facing MCP tool names and the total tool count (**106**)
 > are an external contract — see [Invariants](#invariants).
 
 ---
@@ -119,7 +119,7 @@ The ~105 tools group into these categories. A tool's category determines its
 | **discovery** | `tools/discovery/` | Resolve node IDs, list board items | `discover_ids`, `list_project_items` |
 | **issues** | `tools/issues/` | Issue create/edit/close/reopen, comments, sub-issues, detail | `create_project_item`, `edit_issue`, `close_issue`, `comment_issue`, `add_sub_issue`, `get_issue_detail`, `reopen_issue` |
 | **pull_requests** | `tools/pull_requests/` | PR ↔ issue linkage, closure readiness | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
-| **projects** | `tools/projects/` | Board placement: status, done, trash, archive | `move_to_status`, `move_to_done`, `move_to_trash`, `archive_project_item`, `update_project_item_fields` |
+| **projects** | `tools/projects/` | Board placement: status, done, trash, archive | `move_to_status`, `move_to_done`, `move_to_trash`, `archive_project_item`, `add_item_to_project`, `update_project_item_fields` |
 | **fields** | `tools/fields/` | Field/estimate/label/milestone writes | `set_estimate`, `create_label`, `list_labels`, `create_milestone`, `close_milestone`, `list_milestones` |
 | **planning** | `tools/planning/` | Sprints, workflows, release notes, epics | `sprint_planning`, `generate_release_notes`, `create_epic`, `daily_standup`, `sprint_review`, `close_sprint`, `triage_new_issues` |
 | **discovery/bulk** | `tools/bulk/` | Batch operations + search across many items | `bulk_close_issues`, `bulk_update_items`, `search_issues`, `bulk_assign` |
@@ -203,7 +203,7 @@ a registered tool has no capability mapping.
 
 ## 6. Invariants (do not break)
 
-- **Tool count is 105.** A structural change must not add or drop a registered tool.
+- **Tool count is 106.** A structural change must not add or drop a registered tool.
   `scripts/count_tools.py` and `test_contracts.py::TestToolRegistration` enforce ≥100
   and no duplicates.
 - **Client-facing tool names are byte-identical** across a refactor.

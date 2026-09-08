@@ -188,6 +188,30 @@ The MCP requires three mandatory fields identifying the GitHub Project:
 > detection cannot run (no `gh`, no auth, or a network error) the server falls
 > back to `organization` and logs a hint to set `GH_PROJECT_OWNER_TYPE=user`.
 
+#### Board field defaults
+
+When `create_project_item` (default) or `update_project_item_fields` with
+`apply_defaults: true` runs, any board field the caller omits is filled from
+these settings, so a board item never lands with empty custom fields. All are
+optional and only apply to fields that exist on the board.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `GH_PROJECT_DEFAULT_DUE_DAYS` | Days from today for the default Due date | `7` |
+| `GH_PROJECT_DEFAULT_ESTIMATE` | Default Estimate (NUMBER field) | `3` |
+| `GH_PROJECT_DEFAULT_PRIORITY` | Default Priority option (if valid on board) | `Medium` |
+| `GH_PROJECT_DEFAULT_AREA` | Default Area option (empty = no default) | *(empty)* |
+| `GH_PROJECT_DEFAULT_WORK_TYPE` | Work Type when not inferable from labels | *(empty → `Feature`)* |
+| `GH_PROJECT_ENFORCE_FIELDS` | Strict mode: `update_project_item_fields` errors if any board field is still unset after defaults | `false` |
+
+> **Work Type inference.** When Work Type is omitted, a `bug` label maps it to
+> `Bug`; otherwise `GH_PROJECT_DEFAULT_WORK_TYPE` is used, falling back to
+> `Feature`. Status defaults to the board's first option.
+>
+> **Strict mode.** Set `GH_PROJECT_ENFORCE_FIELDS=true` to make
+> `update_project_item_fields` refuse to complete while board fields remain
+> unset (after defaults). A per-call `enforce` argument overrides this.
+
 ### Using Profiles
 
 Pre-built profiles live in `profiles/`:
