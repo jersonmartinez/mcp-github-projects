@@ -285,3 +285,53 @@ def extract_project_data(response: dict, owner_type: Literal["organization", "us
     if owner_type == "user":
         return response.get("data", {}).get("user", {}).get("projectV2")
     return response.get("data", {}).get("organization", {}).get("projectV2")
+
+
+# ── Owner / Repository node-id lookups (for provisioning) ────────────────────
+# createProjectV2 needs the owner's node ID; linking a repo needs the repo node
+# ID. These small queries resolve those IDs for a user or organization owner.
+
+OWNER_ID_QUERY_USER: str = """
+query OwnerId($login: String!) {
+  user(login: $login) {
+    id
+    login
+  }
+}
+""".strip()
+
+OWNER_ID_QUERY_ORG: str = """
+query OwnerId($login: String!) {
+  organization(login: $login) {
+    id
+    login
+  }
+}
+""".strip()
+
+REPO_ID_QUERY: str = """
+query RepoId($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id
+    nameWithOwner
+  }
+}
+""".strip()
+
+
+def get_owner_id_query(owner_type: Literal["organization", "user"] = "organization") -> str:
+    """Return the owner-id lookup query for the given owner type."""
+    if owner_type == "user":
+        return OWNER_ID_QUERY_USER
+    return OWNER_ID_QUERY_ORG
+
+
+def extract_owner_id(
+    response: dict, owner_type: Literal["organization", "user"] = "organization"
+) -> str | None:
+    """Extract the owner node ID from an owner-id lookup response."""
+    key = "user" if owner_type == "user" else "organization"
+    node = response.get("data", {}).get(key)
+    if isinstance(node, dict):
+        return node.get("id")
+    return None

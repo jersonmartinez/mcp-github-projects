@@ -74,6 +74,13 @@ from tools.pull_requests.pr_issue_lifecycle import (
     sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
+from tools.project_provisioning import (
+    create_project,
+    update_project,
+    create_project_field,
+    link_repository,
+    list_projects,
+)
 
 # ── FastMCP Server Instance ──────────────────────────────────────────────────
 
@@ -130,6 +137,11 @@ mcp.tool()(get_pr_linked_issues)
 mcp.tool()(validate_issue_closure_readiness)
 mcp.tool()(close_issue_on_pr_merge)
 mcp.tool()(sync_closed_items_to_done)
+mcp.tool()(create_project)
+mcp.tool()(update_project)
+mcp.tool()(create_project_field)
+mcp.tool()(link_repository)
+mcp.tool()(list_projects)
 
 # Register the extended capability suite (60 additional tools).
 for _tool_name in capability_suite.CAPABILITY_TOOL_NAMES:
