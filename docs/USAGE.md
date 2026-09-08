@@ -400,11 +400,28 @@ Output: { issue_number, from, to, message }
 
 ### create_epic
 
-Creates a parent issue with multiple sub-issues linked in a single call.
+Creates a parent (epic) issue and links its sub-issues in a single call. Sub-issues
+can be **created** from `sub_tasks` titles and/or **linked from existing** issues via
+`link_existing`.
+
+Project, field, and option IDs are resolved **at runtime** from the `GH_PROJECT_*`
+context (via the discovery service) — there are no hardcoded board IDs, so the tool
+works against any board. When `status` is omitted it defaults to the board's **first
+Status option**; pass `status`/`priority` by option name (validated against the board's
+own field options).
+
+Parameters:
+- `title` (str, required) — epic title.
+- `body` (str, required) — epic description.
+- `sub_tasks` (list[str], optional, max 20) — titles for NEW sub-issues to create.
+- `link_existing` (list[int], optional) — existing issue numbers to link as sub-issues (no new issues created).
+- `milestone`, `assignee`, `labels` (optional) — applied to created issues.
+- `status` (str, optional) — Status option name; defaults to the board's first Status option.
+- `priority` (str, optional) — Priority option name (must match the board's Priority options).
 
 ```
-Input:  { "title": "OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI", "Tests"], "milestone": "Sprint 4 - Jul 28 - Ago 3", "assignee": "jersonmartinez", "labels": ["📱 Mobile"] }
-Output: { parent_issue, parent_url, sub_issues: [{ number, title }], sub_issues_count }
+Input:  { "title": "🏔️ [Epic] OCR System", "body": "Implement ticket scanning...", "sub_tasks": ["Backend OCR endpoint", "Frontend camera UI"], "link_existing": [42, 43], "milestone": "Sprint 4 - Jul 28 - Ago 3", "assignee": "jersonmartinez", "labels": ["📱 Mobile"], "priority": "High" }
+Output: { parent_issue, parent_url, sub_issues: [{ number, title, created }], sub_issues_count, linked_existing: [{ number, linked }], linked_existing_count, status_applied, message }
 ```
 
 ### close_sprint

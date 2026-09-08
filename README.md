@@ -252,7 +252,7 @@ Para configuración específica por IDE, ver [docs/SETUP.md](docs/SETUP.md#ide-i
 | `sprint_review` | Sprint review summary |
 | `triage_new_issues` | Auto-triage proposals |
 | `escalate_overdue` | Flag overdue items |
-| `create_epic` | Create parent + children |
+| `create_epic` | Create parent + children (new sub-tasks and/or link existing issues); runtime board IDs |
 | `close_sprint` | Close sprint and move items |
 
 ### Metadata
