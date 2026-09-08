@@ -1,14 +1,21 @@
 """MCP tool for updating fields on a project item.
 
 Exposes the `update_project_item_fields` tool function that accepts a
-project item node ID and a dict of field name → value pairs. Applies
-updates sequentially, collecting per-field results (success/failure).
-Returns all current field values on full success, or a partial success
-response with per-field outcomes when some updates fail.
+project item node ID (or an issue/PR number to resolve one, owner-type
+aware) and a dict of field name → value pairs. Applies updates
+sequentially, collecting per-field results (success/failure). Returns all
+current field values on full success, or a partial success response with
+per-field outcomes when some updates fail.
 
 Fields are routed to the appropriate update mechanism:
-- Status, Priority, Milestone, Due date → ProjectService.update_field() via GraphQL
+- Any board field (SINGLE_SELECT such as Status/Priority/Area/Work Type,
+  NUMBER such as Estimate, DATE such as Due date, TEXT) → resolved against
+  discovered metadata and written via ProjectService.update_field() GraphQL
 - Body, Assignees, Labels → IssueService.update() via gh issue edit
+
+Optionally fills omitted board fields with configured defaults
+(apply_defaults) and can enforce that no board field is left unset
+(GH_PROJECT_ENFORCE_FIELDS). See issue #14 / #17.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ from core.auth import resolve_token
 from clients.cache_manager import CacheManager
 from clients.gh_cli_client import CLIError, GHCLIClient
 from clients.graphql_client import GraphQLClient
+from core.config import get_settings
 from core.error_handling import build_error_response, handle_tool_error
 from core.exceptions import (
     GitHubProjectError,
@@ -32,8 +40,9 @@ from core.exceptions import (
 )
 from graphql.queries import GET_ITEM_STATUS_QUERY
 from models.metadata import ProjectMetadata
-from models.responses import ToolError, ToolSuccess
+from models.responses import ToolSuccess
 from services.discovery_service import DiscoveryService
+from services.field_defaults import compute_defaults, unset_board_fields
 from services.issue_service import IssueService
 from services.project_service import ProjectService
 
@@ -42,21 +51,28 @@ logger = logging.getLogger(__name__)
 # Fields that route through the Issues API (gh issue edit).
 _ISSUE_API_FIELDS: frozenset[str] = frozenset({"body", "assignees", "labels"})
 
-# Fields that route through the GraphQL Projects V2 API.
-_PROJECT_API_FIELDS: frozenset[str] = frozenset({
-    "status", "priority", "milestone", "due_date", "due date",
-})
-
-# Canonical field name mapping (user-friendly → internal).
+# Well-known canonical field name mapping (user-friendly → board name).
+# Any OTHER name is matched case-insensitively against discovered board
+# fields at runtime, so custom single-selects (Area, Work Type), NUMBER
+# (Estimate) and DATE fields all resolve without a hardcoded whitelist
+# (issue #14).
 _FIELD_NAME_MAP: dict[str, str] = {
     "status": "Status",
     "priority": "Priority",
     "milestone": "Milestone",
     "due_date": "Due date",
     "due date": "Due date",
+    "duedate": "Due date",
+    "estimate": "Estimate",
+    "area": "Area",
+    "work_type": "Work Type",
+    "work type": "Work Type",
+    "worktype": "Work Type",
     "body": "body",
     "assignees": "assignees",
+    "assignee": "assignees",
     "labels": "labels",
+    "label": "labels",
 }
 
 
@@ -64,22 +80,56 @@ class UpdateFieldsInput(BaseModel):
     """Input schema for the update_project_item_fields tool.
 
     Attributes:
-        item_id: The project item node ID to update.
+        item_id: The project item node ID to update. Alternatively pass
+            issue_number to resolve the item on the board (owner-type aware).
+        issue_number: Issue / PR number to resolve to an item_id when item_id
+            is not supplied (works on user- and org-owned boards, issue #17).
         fields: Dict mapping field names to their new values.
-                Supported fields: Status, Priority, Milestone, Due date,
-                body, assignees (list of usernames), labels (list of names).
+        apply_defaults: When True, fill omitted board fields (Priority, Area,
+            Estimate, Due date, Work Type, Status) with configured defaults
+            before writing (issue #14).
+        labels: Issue labels used to infer the Work Type default.
+        enforce: Override GH_PROJECT_ENFORCE_FIELDS for this call; when True
+            and a board field is still unset after defaults, the call errors.
     """
 
-    item_id: str = Field(
-        min_length=1,
-        description="Project item node ID to update",
+    item_id: str | None = Field(
+        default=None,
+        description="Project item node ID to update (or pass issue_number)",
+    )
+    issue_number: int | None = Field(
+        default=None,
+        description=(
+            "Issue/PR number to resolve to an item_id when item_id is omitted"
+        ),
     )
     fields: dict[str, Any] = Field(
-        min_length=1,
+        default_factory=dict,
         description=(
-            "Dict of field name → value pairs. "
-            "Supported: Status, Priority, Milestone, Due date (YYYY-MM-DD), "
-            "body (string), assignees (list of usernames), labels (list of names)"
+            "Dict of field name → value pairs. Supported: any board field — "
+            "SINGLE_SELECT (Status, Priority, Area, Work Type — value is the "
+            "option name), NUMBER (Estimate), DATE (Due date, YYYY-MM-DD), "
+            "TEXT; plus issue fields body (string), assignees (list), "
+            "labels (list)."
+        ),
+    )
+    apply_defaults: bool = Field(
+        default=False,
+        description=(
+            "Fill omitted board fields with configured defaults before "
+            "writing (Due date=today+N, Estimate, Priority, Status, Area, "
+            "Work Type inferred from labels)."
+        ),
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        description="Issue labels, used to infer the Work Type default",
+    )
+    enforce: bool | None = Field(
+        default=None,
+        description=(
+            "Override GH_PROJECT_ENFORCE_FIELDS; error if a board field is "
+            "still unset after defaults"
         ),
     )
 
@@ -123,13 +173,41 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
         # 1. Discover project metadata for field resolution.
         metadata = await discovery_service.get_cached_or_discover()
 
-        # 2. Resolve the item — verify it exists and get issue_number.
-        item_info = await _resolve_item(graphql_client, params.item_id)
+        # 2. Resolve the item_id — accept an explicit id, else resolve from
+        #    an issue/PR number on the board (owner-type aware, issue #17).
+        item_id = params.item_id
+        if not item_id:
+            if params.issue_number is None:
+                return build_error_response(
+                    error_type="validation",
+                    message="Provide either item_id or issue_number.",
+                    suggestion=(
+                        "Pass the project item node ID as item_id, or the "
+                        "issue/PR number as issue_number to resolve it."
+                    ),
+                )
+            item_id = await project_service.resolve_item_id(
+                metadata, params.issue_number
+            )
+            if not item_id:
+                return build_error_response(
+                    error_type="not_found",
+                    message=(
+                        f"Issue/PR #{params.issue_number} is not on the "
+                        "project board."
+                    ),
+                    suggestion=(
+                        "Add it first with add_item_to_project, then retry."
+                    ),
+                )
+
+        # 3. Verify the item exists and get its issue_number/content type.
+        item_info = await _resolve_item(graphql_client, item_id)
         if item_info is None:
             return build_error_response(
                 error_type="not_found",
                 message=(
-                    f"Project item '{params.item_id}' not found. "
+                    f"Project item '{item_id}' not found. "
                     "The item may have been deleted or the ID is invalid."
                 ),
                 suggestion=(
@@ -141,14 +219,81 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
         issue_number = item_info.get("issue_number")
         content_type = item_info.get("content_type", "")
 
-        # 3. Apply updates sequentially, collecting per-field results.
+        # 4. Normalize provided field names, then optionally fill defaults.
+        settings = get_settings()
+        provided_canonical: dict[str, Any] = {}
+        unknown_fields: list[str] = []
+        for raw_name, value in params.fields.items():
+            canonical = _normalize_field_name(raw_name, metadata)
+            if canonical is None:
+                unknown_fields.append(raw_name)
+                continue
+            provided_canonical[canonical] = value
+
+        if unknown_fields:
+            valid = _known_field_names(metadata)
+            return build_error_response(
+                error_type="validation",
+                message=(
+                    f"Unknown field(s): {', '.join(unknown_fields)}."
+                ),
+                suggestion=f"Valid fields: {', '.join(valid)}.",
+            )
+
+        # Board-level provided values feed the defaults computation; issue
+        # fields (body/assignees/labels) pass through untouched.
+        board_provided = {
+            k: v for k, v in provided_canonical.items()
+            if k.lower() not in _ISSUE_API_FIELDS
+        }
+        effective: dict[str, Any] = dict(provided_canonical)
+
+        if params.apply_defaults:
+            defaults = compute_defaults(
+                metadata=metadata,
+                settings=settings,
+                provided=board_provided,
+                labels=params.labels,
+            )
+            for name, value in defaults.items():
+                effective.setdefault(name, value)
+
+        # 5. Strict mode — error if any board field is still unset.
+        enforce = settings.enforce_fields if params.enforce is None else params.enforce
+        if enforce:
+            board_effective = {
+                k: v for k, v in effective.items()
+                if k.lower() not in _ISSUE_API_FIELDS
+            }
+            missing = unset_board_fields(metadata, board_effective)
+            if missing:
+                return build_error_response(
+                    error_type="validation",
+                    message=(
+                        "Strict field enforcement: these board fields are "
+                        f"still unset: {', '.join(missing)}."
+                    ),
+                    suggestion=(
+                        "Provide values for them, or set apply_defaults=true "
+                        "so defaults are filled in."
+                    ),
+                )
+
+        if not effective:
+            return build_error_response(
+                error_type="validation",
+                message="No fields to update.",
+                suggestion="Provide at least one field, or apply_defaults=true.",
+            )
+
+        # 6. Apply updates sequentially, collecting per-field results.
         results: list[dict[str, str]] = []
 
-        for raw_field_name, value in params.fields.items():
+        for canonical_name, value in effective.items():
             outcome = await _apply_single_field_update(
-                raw_field_name=raw_field_name,
+                raw_field_name=canonical_name,
                 value=value,
-                item_id=params.item_id,
+                item_id=item_id,
                 issue_number=issue_number,
                 content_type=content_type,
                 metadata=metadata,
@@ -157,14 +302,14 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
             )
             results.append(outcome)
 
-        # 4. Determine response type based on outcomes.
+        # 7. Determine response type based on outcomes.
         all_success = all(r["outcome"] == "success" for r in results)
         any_success = any(r["outcome"] == "success" for r in results)
 
         if all_success:
             return ToolSuccess(
                 data={
-                    "item_id": params.item_id,
+                    "item_id": item_id,
                     "results": results,
                     "status": "all_fields_updated",
                 },
@@ -173,7 +318,7 @@ async def update_project_item_fields(params: UpdateFieldsInput) -> dict:
             # Partial success: some fields updated, some failed.
             return ToolSuccess(
                 data={
-                    "item_id": params.item_id,
+                    "item_id": item_id,
                     "results": results,
                     "status": "partial_success",
                 },
@@ -280,9 +425,8 @@ async def _apply_single_field_update(
         A dict with keys: "field", "outcome" ("success" or "failure"),
         and either "value" (on success) or "reason" (on failure).
     """
-    # Normalize field name to canonical form.
-    canonical_name = _normalize_field_name(raw_field_name)
-    display_name = canonical_name or raw_field_name
+    # Normalize field name to canonical form (metadata-aware).
+    canonical_name = _normalize_field_name(raw_field_name, metadata)
 
     if canonical_name is None:
         return {
@@ -290,8 +434,7 @@ async def _apply_single_field_update(
             "outcome": "failure",
             "reason": (
                 f"Unknown field '{raw_field_name}'. "
-                "Supported fields: Status, Priority, Milestone, Due date, "
-                "body, assignees, labels"
+                f"Valid fields: {', '.join(_known_field_names(metadata))}"
             ),
         }
 
@@ -471,40 +614,47 @@ async def _update_issue_field(
         }
 
 
-def _normalize_field_name(raw_name: str) -> str | None:
-    """Normalize a user-provided field name to its canonical form.
+def _normalize_field_name(
+    raw_name: str,
+    metadata: ProjectMetadata | None = None,
+) -> str | None:
+    """Normalize a user-provided field name to its canonical board name.
 
-    Performs case-insensitive matching and handles common variations
-    (e.g., "due_date" → "Due date", "Status" → "Status").
+    Resolution order:
+    1. Well-known aliases (``due_date`` → ``Due date``, ``work_type`` →
+       ``Work Type``, issue fields body/assignees/labels).
+    2. Case-insensitive match against any field actually on the board
+       (so custom single-selects / NUMBER / DATE fields resolve without a
+       hardcoded whitelist — issue #14).
 
     Args:
-        raw_name: The field name as provided by the user.
+        raw_name: The field name as provided by the user (or already
+            canonical, in which case it round-trips).
+        metadata: Discovered project metadata; when provided, board field
+            names are matched dynamically.
 
     Returns:
         The canonical field name, or None if unrecognized.
     """
     lower_name = raw_name.lower().strip()
 
-    # Direct mapping check.
     if lower_name in _FIELD_NAME_MAP:
         return _FIELD_NAME_MAP[lower_name]
 
-    # Try exact match with case variations.
-    canonical_by_lower: dict[str, str] = {
-        "status": "Status",
-        "priority": "Priority",
-        "milestone": "Milestone",
-        "due_date": "Due date",
-        "due date": "Due date",
-        "duedate": "Due date",
-        "body": "body",
-        "assignees": "assignees",
-        "assignee": "assignees",
-        "labels": "labels",
-        "label": "labels",
-    }
+    # Dynamic match against discovered board fields (case-insensitive).
+    if metadata is not None:
+        for field_name in metadata.fields:
+            if field_name.lower() == lower_name:
+                return field_name
 
-    return canonical_by_lower.get(lower_name)
+    return None
+
+
+def _known_field_names(metadata: ProjectMetadata) -> list[str]:
+    """Return the set of accepted field names for error messages."""
+    names = set(metadata.fields.keys())
+    names.update({"body", "assignees", "labels"})
+    return sorted(names)
 
 
 def _validate_issue_field_value(

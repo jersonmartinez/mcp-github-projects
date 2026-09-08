@@ -142,6 +142,61 @@ class GitHubProjectSettings(BaseSettings):
     estimate_max: float = Field(default=9999.0, gt=0)
     estimate_granularity: float = Field(default=0.25, gt=0)
 
+    # ── Board field defaults & enforcement (issue #14) ───────────
+    # Applied by create_project_item / update_project_item_fields when a
+    # field is omitted, so a board item never lands with empty custom
+    # fields. All are overridable via GH_PROJECT_DEFAULT_* env vars.
+    default_due_days: int = Field(
+        default=7,
+        ge=0,
+        le=3650,
+        description=(
+            "Days from today used for the default Due date when omitted "
+            "(GH_PROJECT_DEFAULT_DUE_DAYS)."
+        ),
+    )
+    default_estimate: float = Field(
+        default=3.0,
+        ge=0,
+        description=(
+            "Default Estimate (NUMBER field) applied when omitted "
+            "(GH_PROJECT_DEFAULT_ESTIMATE)."
+        ),
+    )
+    default_priority: str = Field(
+        default="Medium",
+        max_length=100,
+        description=(
+            "Default Priority single-select option when omitted "
+            "(GH_PROJECT_DEFAULT_PRIORITY)."
+        ),
+    )
+    default_area: str = Field(
+        default="",
+        max_length=100,
+        description=(
+            "Default Area single-select option when omitted; empty means "
+            "no default (GH_PROJECT_DEFAULT_AREA)."
+        ),
+    )
+    default_work_type: str = Field(
+        default="",
+        max_length=100,
+        description=(
+            "Default Work Type single-select when it cannot be inferred "
+            "from labels; empty falls back to 'Feature' "
+            "(GH_PROJECT_DEFAULT_WORK_TYPE)."
+        ),
+    )
+    enforce_fields: bool = Field(
+        default=False,
+        description=(
+            "Strict mode: when true, update_project_item_fields returns an "
+            "error listing any board fields left unset after applying "
+            "defaults (GH_PROJECT_ENFORCE_FIELDS)."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_target_fields(self) -> "GitHubProjectSettings":
         """Ensure mandatory target fields are set and owner_type is valid."""
