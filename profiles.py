@@ -1,15 +1,13 @@
 """Backward-compatibility shim — canonical module is `core.profiles`.
 
-This module re-exports the canonical implementation so historical imports
-(`profiles`) keep resolving. New code MUST import from `core.profiles`.
-See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
+This module aliases the canonical module in sys.modules so the historical
+path (`profiles`) and `core.profiles` are the SAME object. New code MUST import from
+`core.profiles`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
-import core.profiles as _canon  # noqa: E402
+import sys
 
-# Re-export every module-level name (including non-__all__ symbols such as
-# imported client classes that tests patch) so `patch('profiles.X')` resolves
-# against the SAME object the canonical module uses.
-globals().update(
-    {k: v for k, v in vars(_canon).items() if not k.startswith('__')}
-)
-del _canon
+import core.profiles as _canonical
+
+# Make `profiles` an alias of `core.profiles`: attribute access and mock.patch on the
+# old path operate on the canonical module object itself.
+sys.modules[__name__] = _canonical

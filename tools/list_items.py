@@ -1,15 +1,13 @@
 """Backward-compatibility shim — canonical module is `tools.discovery.list_items`.
 
-This module re-exports the canonical implementation so historical imports
-(`tools.list_items`) keep resolving. New code MUST import from `tools.discovery.list_items`.
-See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
+This module aliases the canonical module in sys.modules so the historical
+path (`tools.list_items`) and `tools.discovery.list_items` are the SAME object. New code MUST import from
+`tools.discovery.list_items`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
-import tools.discovery.list_items as _canon  # noqa: E402
+import sys
 
-# Re-export every module-level name (including non-__all__ symbols such as
-# imported client classes that tests patch) so `patch('tools.list_items.X')` resolves
-# against the SAME object the canonical module uses.
-globals().update(
-    {k: v for k, v in vars(_canon).items() if not k.startswith('__')}
-)
-del _canon
+import tools.discovery.list_items as _canonical
+
+# Make `tools.list_items` an alias of `tools.discovery.list_items`: attribute access and mock.patch on the
+# old path operate on the canonical module object itself.
+sys.modules[__name__] = _canonical

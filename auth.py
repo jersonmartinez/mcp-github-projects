@@ -1,15 +1,13 @@
 """Backward-compatibility shim — canonical module is `core.auth`.
 
-This module re-exports the canonical implementation so historical imports
-(`auth`) keep resolving. New code MUST import from `core.auth`.
-See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
+This module aliases the canonical module in sys.modules so the historical
+path (`auth`) and `core.auth` are the SAME object. New code MUST import from
+`core.auth`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
-import core.auth as _canon  # noqa: E402
+import sys
 
-# Re-export every module-level name (including non-__all__ symbols such as
-# imported client classes that tests patch) so `patch('auth.X')` resolves
-# against the SAME object the canonical module uses.
-globals().update(
-    {k: v for k, v in vars(_canon).items() if not k.startswith('__')}
-)
-del _canon
+import core.auth as _canonical
+
+# Make `auth` an alias of `core.auth`: attribute access and mock.patch on the
+# old path operate on the canonical module object itself.
+sys.modules[__name__] = _canonical

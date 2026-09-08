@@ -1,15 +1,13 @@
 """Backward-compatibility shim — canonical module is `tools.projects.update_fields`.
 
-This module re-exports the canonical implementation so historical imports
-(`tools.update_fields`) keep resolving. New code MUST import from `tools.projects.update_fields`.
-See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
+This module aliases the canonical module in sys.modules so the historical
+path (`tools.update_fields`) and `tools.projects.update_fields` are the SAME object. New code MUST import from
+`tools.projects.update_fields`. See docs/architecture/PROJECT_STRUCTURE.md §1 (compatibility layer).
 """
-import tools.projects.update_fields as _canon  # noqa: E402
+import sys
 
-# Re-export every module-level name (including non-__all__ symbols such as
-# imported client classes that tests patch) so `patch('tools.update_fields.X')` resolves
-# against the SAME object the canonical module uses.
-globals().update(
-    {k: v for k, v in vars(_canon).items() if not k.startswith('__')}
-)
-del _canon
+import tools.projects.update_fields as _canonical
+
+# Make `tools.update_fields` an alias of `tools.projects.update_fields`: attribute access and mock.patch on the
+# old path operate on the canonical module object itself.
+sys.modules[__name__] = _canonical
