@@ -498,3 +498,51 @@ app/backend/app/mcp/github_project/
     ├── GRAPHQL_REFERENCE.md ← GraphQL queries used
     └── TROUBLESHOOTING.md   ← Common issues & fixes
 ```
+
+---
+
+## CLI client
+
+`scripts/mcp_call.py` is a minimal stdio client for calling a single tool
+without writing a full MCP client. It launches the server (`python server.py`)
+as a subprocess, performs the FastMCP handshake, calls one tool, prints the
+JSON response, and exits.
+
+### Via `make call` (recommended)
+
+Runs the client inside the Docker image with your `.env` for token and project
+context:
+
+```bash
+make call TOOL=list_labels
+make call TOOL=get_issue_detail ARGS='{"issue_number": 1}'
+make call TOOL=get_project_stats ARGS='{}' FLAGS='--flat'
+```
+
+### Directly
+
+```bash
+python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
+```
+
+| Argument / flag | Meaning |
+|-----------------|---------|
+| `TOOL` | Tool name (e.g. `list_labels`). |
+| `JSON_ARGS` | Arguments as a JSON object. Default `{}`. |
+| `--flat` | Send flat kwargs instead of the default `params` wrapper. A few tools (e.g. `create_project_item`) require this. |
+| `--raw` | Print the full JSON-RPC envelope instead of just the tool result. |
+
+### Authentication & context
+
+- Token resolved from `GITHUB_TOKEN`, then `GH_TOKEN`. It is passed through to
+  the server process and is **never printed or logged** by the client.
+- The server also needs `GH_PROJECT_ORG_NAME`, `GH_PROJECT_REPO_NAME`,
+  `GH_PROJECT_PROJECT_NUMBER` (and optionally `GH_PROJECT_OWNER_TYPE=user` for
+  user-owned projects) in the environment — supplied by your `.env` when using
+  `make call`.
+
+### Exit codes
+
+- `0` — tool returned successfully.
+- non-zero — the tool reported an error (`isError: true`) or no response was
+  received (check token / project-context env).
