@@ -21,7 +21,7 @@ Complete reference for all 40 tools exposed by the GitHub Project Management MCP
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
 | Milestones | create_milestone, close_milestone, list_milestones | 3 |
 | Labels | create_label, list_labels | 2 |
-| Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request | 5 |
+| Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request | 6 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
 
 ---
@@ -327,6 +327,17 @@ Links a PR to an issue (adds closing reference + comment).
 ```
 Input:  { "issue_number": 258, "pr_number": 45 }
 Output: { issue_number, pr_number, pr_url, message }
+```
+
+### create_pull_request
+
+Opens a new pull request via the GitHub REST API (`POST /repos/{owner}/{repo}/pulls`).
+Owner/repo come from the `GH_PROJECT_*` env context. Optionally links the new PR to an
+issue by reusing `link_pull_request` (pass `link_to_issue`).
+
+```
+Input:  { "title": "Add create_pull_request tool", "head": "feat/create-pull-request-tool", "base": "main", "body": "Closes #7", "draft": false, "link_to_issue": 7 }
+Output: { pr_number, pr_url, title, head, base, draft, state, message, link_result? }
 ```
 
 ---

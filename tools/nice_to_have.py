@@ -42,6 +42,26 @@ class LinkPullRequestInput(BaseModel):
     pr_number: int = Field(description="Pull request number to link")
 
 
+class CreatePullRequestInput(BaseModel):
+    """Input schema for the create_pull_request tool."""
+
+    title: str = Field(description="Pull request title")
+    head: str = Field(description="Name of the branch where changes are implemented")
+    base: str = Field(
+        default="main",
+        description="Branch to merge the changes into (default: main)",
+    )
+    body: Optional[str] = Field(default=None, description="Pull request body / description")
+    draft: bool = Field(
+        default=False,
+        description="Open the pull request as a draft (default: false)",
+    )
+    link_to_issue: Optional[int] = Field(
+        default=None,
+        description="Optional issue number to link the new PR to via link_pull_request",
+    )
+
+
 class BulkAssignInput(BaseModel):
     """Input schema for the bulk_assign tool."""
 
@@ -249,6 +269,82 @@ async def link_pull_request(params: LinkPullRequestInput) -> dict:
     except Exception as exc:
         logger.error("Error in link_pull_request: %s", exc)
         return handle_tool_error(exc, context="Link pull request failed")
+
+
+async def create_pull_request(params: CreatePullRequestInput) -> dict:
+    """Open a new pull request via the GitHub REST API.
+
+    Calls `POST /repos/{owner}/{repo}/pulls` (through `gh api`) using the
+    owner/repo resolved from the GH_PROJECT_* env context, mirroring the
+    other tools in this module. Optionally links the new PR to an issue by
+    reusing the existing link_pull_request logic.
+
+    Args:
+        params: Input containing title, head, base, body, draft, and an
+            optional link_to_issue number.
+
+    Returns:
+        ToolSuccess with the created PR number and URL, plus an optional
+        link result when link_to_issue is provided.
+    """
+    try:
+        await resolve_token()
+        settings = get_settings()
+        repo = f"{settings.org_name}/{settings.repo_name}"
+        gh_client = GHCLIClient()
+
+        api_args = [
+            "api",
+            "--method", "POST",
+            f"repos/{repo}/pulls",
+            "-f", f"title={params.title}",
+            "-f", f"head={params.head}",
+            "-f", f"base={params.base}",
+            "-F", f"draft={'true' if params.draft else 'false'}",
+        ]
+        if params.body:
+            api_args.extend(["-f", f"body={params.body}"])
+
+        create_result = await gh_client.run(api_args)
+        pr_data = json.loads(create_result.stdout)
+        pr_number = pr_data.get("number")
+        pr_url = pr_data.get("html_url", "")
+
+        data: dict = {
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "title": params.title,
+            "head": params.head,
+            "base": params.base,
+            "draft": params.draft,
+            "state": pr_data.get("state", "open"),
+            "message": f"PR #{pr_number} created: {pr_url}",
+        }
+
+        if params.link_to_issue is not None:
+            link_result = await link_pull_request(
+                LinkPullRequestInput(
+                    issue_number=params.link_to_issue,
+                    pr_number=pr_number,
+                )
+            )
+            data["link_result"] = link_result
+
+        return ToolSuccess(data=data).model_dump()
+
+    except CLIError as exc:
+        logger.error("CLI error in create_pull_request: %s", exc)
+        return build_error_response(
+            error_type="internal",
+            message=f"Failed to create PR: {exc.stderr.strip()}",
+            suggestion=(
+                "Verify the head branch exists and is pushed, the base branch "
+                "is correct, and no PR already exists for this head branch."
+            ),
+        )
+    except Exception as exc:
+        logger.error("Error in create_pull_request: %s", exc)
+        return handle_tool_error(exc, context="Create pull request failed")
 
 
 async def bulk_assign(params: BulkAssignInput) -> dict:

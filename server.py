@@ -46,6 +46,7 @@ from tools.nice_to_have import (
     get_project_stats,
     get_sprint_summary,
     link_pull_request,
+    create_pull_request,
     bulk_assign,
 )
 from tools.planning import (
@@ -106,6 +107,7 @@ mcp.tool()(reopen_issue)
 mcp.tool()(get_project_stats)
 mcp.tool()(get_sprint_summary)
 mcp.tool()(link_pull_request)
+mcp.tool()(create_pull_request)
 mcp.tool()(bulk_assign)
 mcp.tool()(sprint_planning)
 mcp.tool()(generate_release_notes)
