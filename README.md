@@ -293,6 +293,7 @@ GitHub APIs (GraphQL v4 + REST v3)
 | `GH_PROJECT_ORG_NAME` | **Yes** | GitHub owner (organization or user login) |
 | `GH_PROJECT_REPO_NAME` | **Yes** | Repository name |
 | `GH_PROJECT_PROJECT_NUMBER` | **Yes** | Project V2 board number (1–100000) |
+| `GH_PROJECT_OWNER_TYPE` | No | `auto` (default, detects user vs org), `organization`, or `user` |
 
 ## Troubleshooting
 

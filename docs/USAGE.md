@@ -548,9 +548,11 @@ python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
 - Token resolved from `GITHUB_TOKEN`, then `GH_TOKEN`. It is passed through to
   the server process and is **never printed or logged** by the client.
 - The server also needs `GH_PROJECT_ORG_NAME`, `GH_PROJECT_REPO_NAME`,
-  `GH_PROJECT_PROJECT_NUMBER` (and optionally `GH_PROJECT_OWNER_TYPE=user` for
-  user-owned projects) in the environment — supplied by your `.env` when using
-  `make call`.
+  `GH_PROJECT_PROJECT_NUMBER` in the environment — supplied by your `.env` when
+  using `make call`. `GH_PROJECT_OWNER_TYPE` is optional and defaults to
+  `auto`: user-owned boards are detected automatically, so you only set
+  `GH_PROJECT_OWNER_TYPE=user` (or `organization`) when you want to skip
+  detection.
 
 ### Exit codes
 

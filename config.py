@@ -114,8 +114,13 @@ class GitHubProjectSettings(BaseSettings):
         description="GitHub Project V2 board number",
     )
     owner_type: str = Field(
-        default="organization",
-        description="Owner type: 'organization' or 'user'",
+        default="auto",
+        description=(
+            "Owner type: 'auto' (default — detect at runtime), "
+            "'organization', or 'user'. When 'auto', the server queries "
+            "GitHub for the login's type so user-owned boards work without "
+            "any manual override. Set explicitly to short-circuit detection."
+        ),
     )
 
     # ── Timeouts & Retry ─────────────────────────────────────────
@@ -139,7 +144,15 @@ class GitHubProjectSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_target_fields(self) -> "GitHubProjectSettings":
-        """Ensure mandatory target fields are set."""
+        """Ensure mandatory target fields are set and owner_type is valid."""
+        normalized = (self.owner_type or "auto").strip().lower()
+        if normalized not in ("auto", "organization", "user"):
+            raise ValueError(
+                "GH_PROJECT_OWNER_TYPE must be 'auto', 'organization', or "
+                f"'user' (got '{self.owner_type}')."
+            )
+        self.owner_type = normalized
+
         missing = []
         if not self.org_name:
             missing.append("GH_PROJECT_ORG_NAME")

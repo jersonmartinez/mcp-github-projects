@@ -174,7 +174,19 @@ The MCP requires three mandatory fields identifying the GitHub Project:
 | `GH_PROJECT_ORG_NAME` | GitHub owner (org or user login) | `my-org` |
 | `GH_PROJECT_REPO_NAME` | Repository name | `my-repo` |
 | `GH_PROJECT_PROJECT_NUMBER` | Project V2 board number | `1` |
-| `GH_PROJECT_OWNER_TYPE` | `organization` or `user` (default: organization) | `organization` |
+| `GH_PROJECT_OWNER_TYPE` | `auto` (default), `organization`, or `user` | `auto` |
+
+> **Owner-type auto-detection.** `GH_PROJECT_OWNER_TYPE` defaults to `auto`:
+> the server asks GitHub what `GH_PROJECT_ORG_NAME` actually is (via a
+> `repositoryOwner(login:){ __typename }` GraphQL query) and picks the right
+> query variant automatically. This means **user-owned boards work with no
+> extra configuration** — you no longer need to set
+> `GH_PROJECT_OWNER_TYPE=user` for a personal project.
+>
+> Set the value explicitly (`organization` or `user`) to skip detection —
+> useful in fully offline CI, or when the `gh` CLI is not available. If
+> detection cannot run (no `gh`, no auth, or a network error) the server falls
+> back to `organization` and logs a hint to set `GH_PROJECT_OWNER_TYPE=user`.
 
 ### Using Profiles
 
@@ -195,7 +207,8 @@ cp profiles/example.env .env
 export GH_PROJECT_ORG_NAME=my-org
 export GH_PROJECT_REPO_NAME=my-repo
 export GH_PROJECT_PROJECT_NUMBER=1
-export GH_PROJECT_OWNER_TYPE=organization
+# Owner type is auto-detected by default; set it explicitly to skip detection.
+export GH_PROJECT_OWNER_TYPE=auto
 ```
 
 ---
