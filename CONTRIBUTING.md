@@ -40,16 +40,33 @@ docker run --rm -e GH_PROJECT_ORG_NAME=YourOrg -e GH_PROJECT_REPO_NAME=YourRepo 
 | `chore/` | Maintenance, deps |
 | `refactor/` | Code restructuring |
 
+## Project Structure
+
+Before adding or moving code, read
+[docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md).
+It is the source of truth for the directory layout, naming conventions, the
+**tool taxonomy** (which `tools/<category>/` a tool belongs to), and the
+step-by-step recipes for adding a tool or a module. It also lists the hard
+invariants a refactor must preserve (tool count, byte-identical tool names,
+working entrypoint/image build).
+
 ## Adding a New Tool
 
-1. Create `tools/your_tool.py` with:
-   - Pydantic input model
-   - Async tool function with docstring
-   - Error handling using `build_error_response` and `handle_tool_error`
+Full recipe: [PROJECT_STRUCTURE.md §4](docs/architecture/PROJECT_STRUCTURE.md#4-recipe--add-a-new-tool).
+In short:
+
+1. Pick the category and create/extend `tools/<category>/<concern>.py` with:
+   - Pydantic `<ToolName>Input` model
+   - Async tool function with a Google-style docstring
+   - Error handling via `core.error_handling.build_error_response` / `handle_tool_error`
 2. Register in `server.py`: `mcp.tool()(your_tool_function)`
-3. Add capability mapping in `capabilities.py`
-4. Add tests in `tests/`
-5. Verify: `python3 -c "import ast; ast.parse(open('tools/your_tool.py').read())"`
+3. Add the capability mapping in `core/capabilities.py`
+4. Document it in `docs/CAPABILITIES.md` + `docs/USAGE.md` **in the same PR**
+5. Add tests in `tests/test_<area>.py`
+6. Verify the count moved as intended: `python scripts/count_tools.py`
+
+Import shared infrastructure from the **canonical** paths (`core.*`, `clients.*`,
+`graphql.*`, `models.*`, `services.*`) — never from a backward-compatibility shim.
 
 ## Pull Request Requirements
 
