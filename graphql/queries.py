@@ -91,6 +91,24 @@ _ITEMS_FRAGMENT: str = """
               title
               body
               url
+              state
+              assignees(first: 100) {
+                nodes {
+                  login
+                }
+              }
+              labels(first: 100) {
+                nodes {
+                  name
+                }
+              }
+            }
+            ... on PullRequest {
+              number
+              title
+              body
+              url
+              state
               assignees(first: 100) {
                 nodes {
                   login

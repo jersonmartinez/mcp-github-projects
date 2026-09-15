@@ -70,6 +70,7 @@ from tools.pull_requests.pr_issue_lifecycle import (
     get_pr_linked_issues,
     validate_issue_closure_readiness,
     close_issue_on_pr_merge,
+    sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
 
@@ -126,6 +127,7 @@ mcp.tool()(verify_acceptance_criteria)
 mcp.tool()(get_pr_linked_issues)
 mcp.tool()(validate_issue_closure_readiness)
 mcp.tool()(close_issue_on_pr_merge)
+mcp.tool()(sync_closed_items_to_done)
 
 # Register the extended capability suite (60 additional tools).
 for _tool_name in capability_suite.CAPABILITY_TOOL_NAMES:

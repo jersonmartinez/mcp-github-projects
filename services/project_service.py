@@ -535,12 +535,14 @@ class ProjectService:
         issue_url: str | None = None
         assignees: list[str] = []
         labels: list[str] = []
+        content_state: str | None = None
 
-        if content_type == "Issue":
+        if content_type in ("Issue", "PullRequest"):
             title = content.get("title", "")
             body = content.get("body", "")
             issue_number = content.get("number")
             issue_url = content.get("url")
+            content_state = content.get("state")
             assignees = [
                 a.get("login")
                 for a in content.get("assignees", {}).get("nodes", [])
@@ -618,6 +620,7 @@ class ProjectService:
             estimate=estimate,
             assignees=assignees,
             labels=labels,
+            content_state=content_state,
         )
 
     def _apply_filters(
