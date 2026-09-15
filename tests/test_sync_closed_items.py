@@ -52,7 +52,7 @@ SAMPLE_ITEMS = [
 def _run(params):
     """Invoke the tool with discovery + project services mocked."""
     fake_project = MagicMock()
-    fake_project.list_items = AsyncMock(return_value=SAMPLE_ITEMS)
+    fake_project.list_all_items = AsyncMock(return_value=SAMPLE_ITEMS)
     fake_project.update_field = AsyncMock(return_value=None)
     fake_discovery = MagicMock()
     fake_discovery.get_cached_or_discover = AsyncMock(return_value=MagicMock())
@@ -118,7 +118,7 @@ def test_custom_done_status_is_idempotent():
     """
     items = [_item("PVTI_9", 109, "Closed", "MERGED")]
     fake_project = MagicMock()
-    fake_project.list_items = AsyncMock(return_value=items)
+    fake_project.list_all_items = AsyncMock(return_value=items)
     fake_project.update_field = AsyncMock(return_value=None)
     fake_discovery = MagicMock()
     fake_discovery.get_cached_or_discover = AsyncMock(return_value=MagicMock())

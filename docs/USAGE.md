@@ -422,10 +422,11 @@ or **MERGED** (PR) to the Done column, unless it is already in a terminal column
 auto-advance a card to Done when its PR is merged, so cards linger in *In Progress*
 — this tool fixes that in bulk. **Idempotent**: items already in a terminal column
 (including the destination `done_status`, which is always treated as terminal) are
-never candidates. The scan is bounded by `GH_PROJECT_MAX_ITEMS` (default 200); the
-response reports `scanned` and `scan_capped` so a larger board is not silently
-under-reported (rerun to catch the rest). Owner-type (org/user) is handled by the
-underlying `list_items`. Supports a dry-run preview and scoping to a single number.
+never candidates. The scan is **exhaustive** — it pages the entire board past
+`GH_PROJECT_MAX_ITEMS`, so boards with more than 200 cards are fully reconciled in
+one call (including `issue_or_pr_number`, which filters the full board). Owner-type
+(org/user) is handled by the underlying `list_all_items`. Supports a dry-run
+preview and scoping to a single number.
 
 ```
 Input:  {}                                   // scan the whole board, apply
@@ -433,7 +434,7 @@ Input:  {}                                   // scan the whole board, apply
         { "issue_or_pr_number": 658 }        // reconcile just one item
         { "done_status": "✅ Done",
           "keep_statuses": ["✅ Done", "🗑️ Trash"] }   // overrides (defaults shown)
-Output: { dry_run, done_status, scanned, scan_capped, max_items, skipped_open, errors,
+Output: { dry_run, done_status, scanned, skipped_open, errors,
           moved_count, moved:[{number,type,content_state,from_status,item_id}] }
           // dry-run returns would_move_count / would_move instead of moved_*
 ```

@@ -107,6 +107,27 @@ class ProjectService:
 
         return filtered[:settings.max_items]
 
+    async def list_all_items(
+        self,
+        metadata: ProjectMetadata,
+    ) -> list[ProjectItem]:
+        """List EVERY item on the board, paging past ``GH_PROJECT_MAX_ITEMS``.
+
+        Unlike :meth:`list_items` (which caps at ``max_items`` for interactive
+        listing), this consumes the whole board via exhaustive pagination.
+        Reconciliation tools that must not miss any card on large boards use
+        this. Owner-type aware (org/user) via ``_fetch_all_items``.
+
+        Args:
+            metadata: Discovered project metadata.
+
+        Returns:
+            All parsed ProjectItem objects on the board.
+        """
+        return await self._fetch_all_items(
+            metadata, get_settings().max_items, exhaustive=True
+        )
+
     async def add_item(
         self,
         metadata: ProjectMetadata,
@@ -436,6 +457,7 @@ class ProjectService:
         self,
         metadata: ProjectMetadata,
         max_items: int,
+        exhaustive: bool = False,
     ) -> list[ProjectItem]:
         """Fetch all project items with pagination.
 
@@ -444,7 +466,12 @@ class ProjectService:
 
         Args:
             metadata: Project metadata for query variables.
-            max_items: Maximum number of items to fetch.
+            max_items: Maximum number of items to fetch (ignored when
+                ``exhaustive`` is True, except as an absolute safety ceiling).
+            exhaustive: When True, follow pagination cursors until the board is
+                fully consumed (``hasNextPage`` is false), regardless of
+                ``max_items``. Used by reconciliation tools that must see every
+                card even on boards larger than ``GH_PROJECT_MAX_ITEMS``.
 
         Returns:
             List of parsed ProjectItem objects.
@@ -452,6 +479,9 @@ class ProjectService:
         items: list[ProjectItem] = []
         cursor: str | None = None
         page_size = get_settings().page_size
+        # Absolute ceiling so an exhaustive scan can never loop unbounded on a
+        # pathological board or a cursor bug.
+        hard_ceiling = 100_000 if exhaustive else max_items
 
         # Owner-type awareness: user-owned boards are reached via
         # ``user(login:)`` with a ``$login`` variable, org boards via
@@ -461,9 +491,12 @@ class ProjectService:
         query = get_list_items_query(owner_type)
         owner_key = "user" if owner_type == "user" else "organization"
 
-        while len(items) < max_items:
-            remaining = max_items - len(items)
-            fetch_count = min(page_size, remaining)
+        while len(items) < hard_ceiling:
+            if exhaustive:
+                fetch_count = page_size
+            else:
+                remaining = max_items - len(items)
+                fetch_count = min(page_size, remaining)
 
             variables = get_query_variables(
                 owner_login=metadata.owner,
