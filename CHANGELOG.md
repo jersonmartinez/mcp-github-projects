@@ -5,6 +5,23 @@ All notable changes to the GitHub Project Management MCP Server will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `sync_closed_items_to_done` — board-reconciliation tool that moves items whose
+  linked issue/PR is CLOSED or MERGED to the Done column (skips items already in a
+  terminal column). Supports `dry_run` preview and `issue_or_pr_number` scoping.
+  GitHub does not auto-advance a card to Done when its PR merges, so cards
+  otherwise linger in *In Progress*; this tool reconciles them in bulk.
+  Tool count 104 → 105.
+
+### Changed
+
+- `_ITEMS_FRAGMENT` (list-items GraphQL) now selects the content `state` and a
+  `PullRequest` block, and `ProjectItem` gains a `content_state` field
+  (OPEN/CLOSED/MERGED). PR-typed items are now parsed instead of skipped.
+
 ## [1.0.0] - 2026-08-20
 
 ### Added

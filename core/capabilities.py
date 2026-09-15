@@ -149,6 +149,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "get_pr_linked_issues": frozenset({PRR, IR}),
     "validate_issue_closure_readiness": frozenset({IR, PRR, CR}),
     "close_issue_on_pr_merge": frozenset({IW, PRR, CW}),
+    "sync_closed_items_to_done": frozenset({PR, PW}),
     "link_pull_request": frozenset({PRW, IW}),
     "create_pull_request": frozenset({PRW, IW}),
 

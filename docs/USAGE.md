@@ -1,6 +1,6 @@
 # MCP GitHub Project Management — Usage Guide
 
-Complete reference for all 40 tools exposed by the GitHub Project Management MCP server.
+Complete reference for all 105 tools exposed by the GitHub Project Management MCP server.
 
 ## Project Configuration
 
@@ -412,6 +412,30 @@ issue by reusing `link_pull_request` (pass `link_to_issue`).
 ```
 Input:  { "title": "Add create_pull_request tool", "head": "feat/create-pull-request-tool", "base": "main", "body": "Closes #7", "draft": false, "link_to_issue": 7 }
 Output: { pr_number, pr_url, title, head, base, draft, state, message, link_result? }
+```
+
+### sync_closed_items_to_done
+
+Reconciles the board: moves every item whose linked issue/PR is **CLOSED** (issue or PR)
+or **MERGED** (PR) to the Done column, unless it is already in a terminal column
+(`✅ Done` / `🗑️ Trash`) — or already at `done_status` itself. GitHub does not
+auto-advance a card to Done when its PR is merged, so cards linger in *In Progress*
+— this tool fixes that in bulk. **Idempotent**: items already in a terminal column
+(including the destination `done_status`, which is always treated as terminal) are
+never candidates. The scan is bounded by `GH_PROJECT_MAX_ITEMS` (default 200); the
+response reports `scanned` and `scan_capped` so a larger board is not silently
+under-reported (rerun to catch the rest). Owner-type (org/user) is handled by the
+underlying `list_items`. Supports a dry-run preview and scoping to a single number.
+
+```
+Input:  {}                                   // scan the whole board, apply
+        { "dry_run": true }                  // preview only, no mutations
+        { "issue_or_pr_number": 658 }        // reconcile just one item
+        { "done_status": "✅ Done",
+          "keep_statuses": ["✅ Done", "🗑️ Trash"] }   // overrides (defaults shown)
+Output: { dry_run, done_status, scanned, scan_capped, max_items, skipped_open, errors,
+          moved_count, moved:[{number,type,content_state,from_status,item_id}] }
+          // dry-run returns would_move_count / would_move instead of moved_*
 ```
 
 ---

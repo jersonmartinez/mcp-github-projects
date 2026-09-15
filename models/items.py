@@ -16,7 +16,7 @@ class ProjectItem(BaseModel):
     """
 
     node_id: str = Field(description="Project item node ID")
-    content_type: str = Field(description="'Issue' or 'DraftIssue'")
+    content_type: str = Field(description="'Issue', 'PullRequest', or 'DraftIssue'")
     title: str = Field(
         min_length=1, max_length=256, description="Item title (1-256 characters)"
     )
@@ -42,6 +42,10 @@ class ProjectItem(BaseModel):
         default_factory=list, description="List of assigned GitHub usernames"
     )
     labels: list[str] = Field(default_factory=list, description="List of label names")
+    content_state: str | None = Field(
+        default=None,
+        description="Content state of the linked Issue/PR: OPEN, CLOSED, or MERGED (None for DraftIssues)",
+    )
 
 
 class CreateItemInput(BaseModel):

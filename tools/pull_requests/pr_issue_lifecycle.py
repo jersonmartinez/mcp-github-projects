@@ -599,3 +599,163 @@ async def close_issue_on_pr_merge(params: CloseIssueOnPRMergeInput) -> dict:
     except Exception as exc:
         logger.error("Error in close_issue_on_pr_merge: %s", exc)
         return handle_tool_error(exc, context="Close issue on PR merge failed")
+
+
+class SyncClosedItemsToDoneInput(BaseModel):
+    """Input schema for the sync_closed_items_to_done tool."""
+
+    dry_run: bool = Field(
+        default=False,
+        description="If true, only report what WOULD move; do not mutate the board.",
+    )
+    issue_or_pr_number: Optional[int] = Field(
+        default=None,
+        description="Limit reconciliation to a single issue/PR number. None = scan the whole board.",
+    )
+    done_status: str = Field(
+        default="✅ Done",
+        description="Exact name of the destination Status column (default '✅ Done').",
+    )
+    keep_statuses: list[str] = Field(
+        default_factory=lambda: ["✅ Done", "🗑️ Trash"],
+        description="Status columns treated as terminal (never moved). The destination "
+        "done_status is ALWAYS treated as terminal too, even if omitted here.",
+    )
+
+
+async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
+    """Reconcile the board: move items whose linked issue/PR is CLOSED or MERGED to Done.
+
+    The board does not auto-advance an item to Done when its issue/PR is closed
+    or its PR is merged, so cards linger in 'In Progress'. This tool scans the
+    project, finds every item that is NOT in a terminal column (``keep_statuses``
+    plus ``done_status`` itself) but whose linked content state is CLOSED
+    (issue/PR) or MERGED (PR), and moves it to ``done_status``. Idempotent:
+    items already at the destination (or in another terminal column) are never
+    candidates, including when a custom ``done_status`` is supplied.
+
+    Owner-type (organization vs user) is handled transparently by
+    ``ProjectService.list_items`` / ``_fetch_all_items``. The scan is bounded by
+    ``GH_PROJECT_MAX_ITEMS`` (default 200); the response reports ``scanned`` and
+    ``scan_capped`` so a board larger than the cap is not silently under-reported.
+
+    Args:
+        params: dry_run (report only), issue_or_pr_number (limit to one),
+            done_status, and keep_statuses (terminal columns).
+
+    Returns:
+        ToolSuccess with counters (scanned, moved/would_move, skipped, errors)
+        and the affected item numbers, or ToolError on failure.
+    """
+    from clients.cache_manager import CacheManager
+    from clients.graphql_client import GraphQLClient
+    from services.discovery_service import DiscoveryService
+    from services.project_service import ProjectService
+
+    # Content states that mean "the work is finished" and the card should be Done.
+    _CLOSED_STATES = {"CLOSED", "MERGED"}
+
+    try:
+        settings = get_settings()
+        token = await resolve_token()
+        graphql_client = GraphQLClient(token=token)
+        cache_manager = CacheManager()
+        gh_client = GHCLIClient()
+        discovery = DiscoveryService(
+            graphql_client=graphql_client, cache_manager=cache_manager
+        )
+        project_service = ProjectService(
+            graphql_client=graphql_client, gh_client=gh_client
+        )
+        metadata = await discovery.get_cached_or_discover()
+
+        items = await project_service.list_items(metadata=metadata)
+        # The destination is ALWAYS terminal, so a custom done_status stays
+        # idempotent even if the caller did not list it in keep_statuses.
+        terminal_statuses = set(params.keep_statuses) | {params.done_status}
+
+        moved: list[dict] = []
+        would_move: list[dict] = []
+        skipped_open = 0
+        errors: list[dict] = []
+
+        for item in items:
+            # Optional single-item scope.
+            if (
+                params.issue_or_pr_number is not None
+                and item.issue_number != params.issue_or_pr_number
+            ):
+                continue
+            # Already terminal — never a candidate (idempotent).
+            if item.status in terminal_statuses:
+                continue
+            # Only reconcile items whose linked content is closed/merged.
+            if (item.content_state or "").upper() not in _CLOSED_STATES:
+                skipped_open += 1
+                continue
+
+            entry = {
+                "number": item.issue_number,
+                "type": item.content_type,
+                "content_state": item.content_state,
+                "from_status": item.status,
+                "item_id": item.node_id,
+            }
+
+            if params.dry_run:
+                would_move.append(entry)
+                continue
+
+            try:
+                await project_service.update_field(
+                    metadata=metadata,
+                    item_id=item.node_id,
+                    field_name="Status",
+                    value=params.done_status,
+                )
+                moved.append(entry)
+            except Exception as move_exc:  # noqa: BLE001 - collect per-item errors
+                logger.error(
+                    "sync_closed_items_to_done: failed to move item %s (#%s): %s",
+                    item.node_id,
+                    item.issue_number,
+                    move_exc,
+                )
+                errors.append({**entry, "error": str(move_exc)})
+
+        # Report whether the scan may have been truncated by the item cap, so a
+        # board larger than GH_PROJECT_MAX_ITEMS is not silently under-reported.
+        max_items = getattr(settings, "max_items", None)
+        scan_capped = bool(max_items) and len(items) >= max_items
+
+        data = {
+            "dry_run": params.dry_run,
+            "done_status": params.done_status,
+            "scanned": len(items),
+            "scan_capped": scan_capped,
+            "max_items": max_items,
+            "skipped_open": skipped_open,
+            "errors": errors,
+        }
+        if params.dry_run:
+            data["would_move_count"] = len(would_move)
+            data["would_move"] = would_move
+            data["message"] = (
+                f"Dry run: {len(would_move)} item(s) would move to "
+                f"'{params.done_status}'."
+                + (" (scan hit the item cap — rerun after merging.)" if scan_capped else "")
+            )
+        else:
+            data["moved_count"] = len(moved)
+            data["moved"] = moved
+            data["message"] = (
+                f"Moved {len(moved)} item(s) to '{params.done_status}'"
+                + (f"; {len(errors)} error(s)." if errors else ".")
+                + (" (scan hit the item cap — rerun to catch the rest.)" if scan_capped else "")
+            )
+
+        return ToolSuccess(data=data).model_dump()
+
+    except Exception as exc:
+        logger.error("Error in sync_closed_items_to_done: %s", exc)
+        return handle_tool_error(exc, context="Sync closed items to Done failed")
