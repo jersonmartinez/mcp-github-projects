@@ -1,7 +1,7 @@
 # Registro de 200 mejoras del MCP de GitHub Projects
 
 Fecha: 2026-08-13
-Alcance: `mcp/` y `app/backend/app/mcp/github_project/`
+Alcance: repositorio raíz (`server.py`, `tools/`, `services/`, `clients/`, `graphql/`, `models/`)
 Leyenda: **A** aplicado en esta ola · **E** existente/verificado · **P** pendiente de una fase posterior.
 
 > Este registro evita confundir inventario con implementación. Las mejoras marcadas **A** tienen cambios en código y validación de sintaxis dentro de Docker. Las marcadas **E** ya estaban presentes y se conservaron. Las **P** son especificaciones concretas priorizadas; no se declaran terminadas.
