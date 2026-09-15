@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `sync_closed_items_to_done` now scans the board **exhaustively** — it pages the
+  entire board past `GH_PROJECT_MAX_ITEMS` (via the new
+  `ProjectService.list_all_items`), so boards with more than 200 cards are fully
+  reconciled in a single call, including the `issue_or_pr_number` scope. The
+  previous `scan_capped`/`max_items` response fields are removed (no longer
+  meaningful). `_fetch_all_items` gains an `exhaustive` flag with a large safety
+  ceiling.
 - `_ITEMS_FRAGMENT` (list-items GraphQL) now selects the content `state` and a
   `PullRequest` block, and `ProjectItem` gains a `content_state` field
   (OPEN/CLOSED/MERGED). PR-typed items are now parsed instead of skipped.

@@ -635,9 +635,10 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
     candidates, including when a custom ``done_status`` is supplied.
 
     Owner-type (organization vs user) is handled transparently by
-    ``ProjectService.list_items`` / ``_fetch_all_items``. The scan is bounded by
-    ``GH_PROJECT_MAX_ITEMS`` (default 200); the response reports ``scanned`` and
-    ``scan_capped`` so a board larger than the cap is not silently under-reported.
+    ``ProjectService.list_all_items`` / ``_fetch_all_items``. The scan is
+    EXHAUSTIVE — it pages the entire board past ``GH_PROJECT_MAX_ITEMS``, so
+    boards with more than 200 cards are fully reconciled in a single call
+    (including the ``issue_or_pr_number`` scope, which filters the full board).
 
     Args:
         params: dry_run (report only), issue_or_pr_number (limit to one),
@@ -656,7 +657,6 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
     _CLOSED_STATES = {"CLOSED", "MERGED"}
 
     try:
-        settings = get_settings()
         token = await resolve_token()
         graphql_client = GraphQLClient(token=token)
         cache_manager = CacheManager()
@@ -669,7 +669,7 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
         )
         metadata = await discovery.get_cached_or_discover()
 
-        items = await project_service.list_items(metadata=metadata)
+        items = await project_service.list_all_items(metadata=metadata)
         # The destination is ALWAYS terminal, so a custom done_status stays
         # idempotent even if the caller did not list it in keep_statuses.
         terminal_statuses = set(params.keep_statuses) | {params.done_status}
@@ -723,17 +723,10 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
                 )
                 errors.append({**entry, "error": str(move_exc)})
 
-        # Report whether the scan may have been truncated by the item cap, so a
-        # board larger than GH_PROJECT_MAX_ITEMS is not silently under-reported.
-        max_items = getattr(settings, "max_items", None)
-        scan_capped = bool(max_items) and len(items) >= max_items
-
         data = {
             "dry_run": params.dry_run,
             "done_status": params.done_status,
             "scanned": len(items),
-            "scan_capped": scan_capped,
-            "max_items": max_items,
             "skipped_open": skipped_open,
             "errors": errors,
         }
@@ -743,7 +736,6 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
             data["message"] = (
                 f"Dry run: {len(would_move)} item(s) would move to "
                 f"'{params.done_status}'."
-                + (" (scan hit the item cap — rerun after merging.)" if scan_capped else "")
             )
         else:
             data["moved_count"] = len(moved)
@@ -751,7 +743,6 @@ async def sync_closed_items_to_done(params: SyncClosedItemsToDoneInput) -> dict:
             data["message"] = (
                 f"Moved {len(moved)} item(s) to '{params.done_status}'"
                 + (f"; {len(errors)} error(s)." if errors else ".")
-                + (" (scan hit the item cap — rerun to catch the rest.)" if scan_capped else "")
             )
 
         return ToolSuccess(data=data).model_dump()
