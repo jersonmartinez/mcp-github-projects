@@ -1,13 +1,13 @@
 # ── MCP Docker Compose ────────────────────────────────────────────────────────
-# Levanta el MCP server como servicio local con credenciales via .env
+# Runs the MCP server as a local service with credentials from .env
 #
 # Setup:
-#   1. cp mcp/.env.example mcp/.env
-#   2. Editar mcp/.env con tu token y target
-#   3. docker compose -f mcp/compose.yml up --build
+#   1. cp .env.example .env
+#   2. Edit .env with your token and target
+#   3. docker compose -f compose.yaml up --build
 #
-# El MCP usa stdio transport — este compose es para desarrollo/test.
-# En producción, se invoca directamente con `docker run` desde el cliente MCP.
+# The MCP uses stdio transport — this compose is for development/test.
+# In production, the MCP client invokes it directly with `docker run`.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -15,7 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: factib_mcp
+    container_name: mcp_github_projects
     env_file:
       - .env
     environment:

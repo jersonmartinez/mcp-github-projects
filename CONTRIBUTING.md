@@ -12,17 +12,17 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ```bash
 # Clone the repository
-git clone https://github.com/jersonmartinez/github-project-mcp.git
-cd github-project-mcp
+git clone https://github.com/jersonmartinez/mcp-github-projects.git
+cd mcp-github-projects
 
 # Copy a profile
-cp profiles/example.env .env
+cp profiles/example-org.env .env
 # Edit .env with your target org/repo/project
 
 # Build and verify
-docker build -t github-project-mcp:latest .
+docker build -t mcp-github-projects:latest .
 docker run --rm -e GH_PROJECT_ORG_NAME=YourOrg -e GH_PROJECT_REPO_NAME=YourRepo \
-  -e GH_PROJECT_PROJECT_NUMBER=1 github-project-mcp:latest \
+  -e GH_PROJECT_PROJECT_NUMBER=1 mcp-github-projects:latest \
   python3 tests/test_owner_type.py
 ```
 

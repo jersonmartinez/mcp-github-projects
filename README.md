@@ -1,217 +1,116 @@
-# GitHub Project Management MCP Server
+# GitHub Projects V2 — MCP Server
 
-[![MCP CI](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml/badge.svg)](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml)
+[![CI](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml/badge.svg)](https://github.com/jersonmartinez/mcp-github-projects/actions/workflows/ci.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![FastMCP](https://img.shields.io/badge/FastMCP-3.x-6E4AFF.svg)](https://github.com/jlowin/fastmcp)
+[![Docker](https://img.shields.io/badge/docker-first-2496ED.svg?logo=docker&logoColor=white)](Dockerfile)
 
-Custom MCP (Model Context Protocol) server that enables AI assistants to programmatically manage GitHub Project V2 boards via the Model Context Protocol. Built with Python 3.12 and FastMCP, communicates over stdio transport, and runs inside a standalone Docker container.
+A Model Context Protocol (MCP) server that lets AI assistants and agents manage
+**GitHub Projects V2** boards programmatically — issues, fields, milestones,
+labels, sub-issues, and full sprint/planning workflows. Built with **Python 3.12**
+and **FastMCP 3.x**, it speaks **stdio JSON-RPC** and runs entirely inside a
+**standalone Docker container** — no host toolchain required beyond Docker.
 
-## Location
+The server exposes **100+ tools**: ~40 operational primitives plus a suite of ~60
+higher-level capabilities for reporting, planning, roadmaps, and automation.
 
-```
-mcp-github-projects/          ← Standalone repo (own Dockerfile, deps, lifecycle)
-├── Dockerfile
-├── requirements.txt
-├── server.py                 # FastMCP entry point (registers every tool)
-├── __main__.py               # `python -m` shim
-├── core/                     # Cross-cutting infra (config, auth, errors, hardening)
-│   ├── config.py
-│   ├── auth.py
-│   ├── capabilities.py       # Tool → permission mapping
-│   ├── profiles.py           # Multi-target profile system
-│   ├── error_handling.py
-│   ├── exceptions.py
-│   └── hardening.py
-├── tools/                    # MCP tool definitions, grouped by category
-│   ├── discovery/            # ID discovery, board listing
-│   ├── issues/               # Issue CRUD, comments, sub-issues, lifecycle
-│   ├── pull_requests/        # PR ↔ issue linkage & closure readiness
-│   ├── projects/             # Board placement (status/done/trash/archive)
-│   ├── fields/               # Field, estimate, label, milestone writes
-│   ├── planning/             # Sprint planning, workflows, release notes
-│   ├── bulk/                 # Batch operations & search
-│   └── meta/                 # Reports, PR helpers, capability suite (60 tools)
-├── services/                 # Business logic (orchestrates clients + graphql)
-├── clients/                  # GraphQL + gh CLI clients
-├── models/                   # Pydantic models
-├── graphql/                  # Query/mutation strings
-├── tests/                    # Unit + contract tests
-├── scripts/                  # validate.sh, preflight.sh, scan_secrets.sh, …
-├── profiles/                 # Target config (.env files, no secrets)
-├── docs/                     # Detailed documentation
-│   └── architecture/PROJECT_STRUCTURE.md  # ← Layout & conventions (authoritative)
-├── LICENSE                   # MIT
-├── CONTRIBUTING.md
-└── SECURITY.md
-```
+---
 
-> Historical flat paths (`config.py`, `tools/workflows.py`, …) remain as thin
-> backward-compatibility shims that alias the new homes — see
-> [docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md).
+## Features
 
-> **Note**: This MCP server is a standalone component with its own Dockerfile, dependencies, and lifecycle.
+- **100+ MCP tools** covering the full GitHub Projects V2 surface: discovery,
+  board operations, issue lifecycle, milestones, labels, sub-issues, and
+  strategic planning.
+- **GitHub Projects V2 native** — GraphQL v4 for field/board mutations, REST/`gh`
+  for issue CRUD, with automatic delegation to the right API per operation.
+- **Organization *and* user projects** via a single `GH_PROJECT_OWNER_TYPE` switch.
+- **Docker-first** — one image, zero host dependencies, launched on demand by the
+  MCP client over stdio.
+- **MCP-client agnostic** — works with any client that speaks MCP over stdio; no
+  IDE lock-in.
+- **Least-privilege ready** — every tool maps to a documented capability
+  ([docs/CAPABILITIES.md](docs/CAPABILITIES.md)) so you can scope tokens tightly.
+- **Hardened runtime** — bounded timeouts/retries, atomic owner-only metadata
+  cache, target-namespaced isolation, and token redaction in all diagnostics.
+- **Multi-target profiles** — manage several boards from one install via named
+  `profiles/*.env` files.
 
-## How It Works
+---
 
-```
-MCP Client → docker run --rm -i github-project-mcp:latest → stdin/stdout JSON-RPC → GitHub API
-```
+## Quick Start
 
-1. El cliente MCP invoca una herramienta (ej: `create_project_item`)
-2. Se ejecuta `docker run --rm -i github-project-mcp:latest python server.py`
-3. El servidor valida autenticación y espera comandos por stdin
-4. El cliente envía JSON-RPC via stdin, recibe respuestas por stdout
-5. Al finalizar, el contenedor se destruye automáticamente (`--rm`)
-
-### Pull Requests
-
-The server can open pull requests directly (no `gh` fallback needed):
-
-- `create_pull_request` — opens a PR via the GitHub REST API
-  (`POST /repos/{owner}/{repo}/pulls`). Params: `title` (required),
-  `head` (required), `base` (default `main`), `body`, `draft` (default `false`),
-  and an optional `link_to_issue` that links the new PR to an issue.
-- `link_pull_request` — links an existing PR to an issue.
-
-See [docs/USAGE.md](docs/USAGE.md) for full input/output schemas and examples.
-
-## Docker — Construir y Gestionar
-
-### Construir la imagen
+### 1. Build the image
 
 ```bash
-# Desde la raíz del proyecto
-docker build -t github-project-mcp:latest ./mcp
+docker build -t mcp-github-projects:latest .
 ```
 
-### Docker Compose (desarrollo local)
+### 2. Configure your target
 
-La forma más simple de configurar y correr el MCP localmente:
+Copy the template and fill in your token and board coordinates:
 
 ```bash
-# 1. Crear tu configuración local (una sola vez)
-cp mcp/.env.example mcp/.env
-# Editar mcp/.env con tu GITHUB_TOKEN y target (org/repo/project)
-
-# 2. Construir y verificar
-cd mcp/
-make build
-make verify
+cp .env.example .env
 ```
 
-### Makefile Targets
+```dotenv
+# Authentication — a GitHub PAT (classic or fine-grained)
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# GH_TOKEN is also accepted as a fallback
 
-Todos los targets ejecutan dentro de Docker — sin dependencias del host.
+# Target board
+GH_PROJECT_ORG_NAME=my-org          # organization login or username
+GH_PROJECT_REPO_NAME=my-repo        # repository within the owner
+GH_PROJECT_PROJECT_NUMBER=1         # Project V2 number (from the board URL)
+GH_PROJECT_OWNER_TYPE=organization  # 'organization' or 'user'
+```
+
+Token requirements:
+
+- **Classic PAT** scopes: `repo`, `project`, `read:org`
+- **Fine-grained PAT** permissions: Issues (RW), Projects (RW),
+  Organization → Projects (RW), Organization → Members (R)
+
+See [docs/SETUP.md](docs/SETUP.md) for token generation and rotation.
+
+### 3. Verify the setup
 
 ```bash
-cd mcp/
-make help         # Mostrar todos los targets disponibles
-make build        # Construir imagen Docker
-make verify       # Validar auth + scopes + config
-make test         # Ejecutar unit tests
-make validate     # CI completo (build + syntax + tests + tools + secrets)
-make tools        # Contar herramientas registradas (>= 100)
-make syntax       # Verificar sintaxis Python
-make secrets      # Escanear credenciales en código
-make shell        # Shell interactivo dentro del contenedor
-make clean        # Eliminar imágenes
+make verify          # validates auth + scopes + target config inside Docker
 ```
 
-> **Nota:** Si `make` no está disponible en el host, los targets pueden invocarse
-> directamente con Docker. Ejemplo: `docker run --rm --env-file .env github-project-mcp:latest python3 scripts/verify_setup.py`
+### 4. Wire it into your MCP client
 
-Cada contributor clona el repo, crea su `.env`, y el MCP funciona sin instalar nada más que Docker.
-
-### Verificar que la imagen existe
+The server is launched on demand — one `docker run` per session, torn down with
+`--rm` when the client disconnects:
 
 ```bash
-docker images | grep github-project-mcp
+docker run --rm -i --env-file .env mcp-github-projects:latest python server.py
 ```
 
-### Probar manualmente (smoke test)
+On startup it prints to stderr and then waits for JSON-RPC on stdin:
 
-```bash
-docker run --rm -i \
-  -e GITHUB_TOKEN="<your_token>" \
-  github-project-mcp:latest \
-  python server.py
+```
+github-project-management MCP server ready. Authentication validated successfully.
 ```
 
-El servidor imprimirá en stderr: `github-project-management MCP server ready. Authentication validated successfully.`
-Luego espera JSON-RPC por stdin. Presiona Ctrl+C para salir.
+---
 
-### Reconstruir después de cambios
+## MCP Client Configuration
 
-```bash
-docker build -t github-project-mcp:latest ./mcp --no-cache
-```
-
-## Script de gestión
-
-El script `./scripts/dev/start.sh` soporta un argumento `mcp` para gestionar la imagen:
-
-```bash
-./scripts/dev/start.sh mcp build      # Construir/reconstruir la imagen
-./scripts/dev/start.sh mcp test       # Ejecutar smoke test
-./scripts/dev/start.sh mcp status     # Verificar si la imagen existe
-```
-
-> **Nota**: El MCP no es un servicio persistente. No necesita `up/down/restart`. Se lanza bajo demanda cada vez que el cliente usa una herramienta.
-
-## CLI client (`scripts/mcp_call.py` / `make call`)
-
-For quick ops, debugging, or scripting, you can call a single MCP tool over
-stdio without wiring up a full MCP client. The bundled client performs the
-FastMCP handshake (`initialize` → `notifications/initialized` → `tools/call`)
-for you and prints the tool's JSON response.
-
-The convenient path is the `call` Makefile target, which runs the client
-inside the Docker image using your `.env` for token and project context:
-
-```bash
-make call TOOL=list_labels
-make call TOOL=get_issue_detail ARGS='{"issue_number": 1}'
-```
-
-A few tools (e.g. `create_project_item`) take **flat** arguments instead of the
-default `params`-wrapped form; pass `FLAGS='--flat'` for those:
-
-```bash
-make call TOOL=create_project_item ARGS='{"title": "Hello"}' FLAGS='--flat'
-```
-
-You can also invoke the script directly (inside the container, or on a host
-with the dependencies installed). The token is resolved from `GITHUB_TOKEN`
-then `GH_TOKEN` and is never printed or logged:
-
-```bash
-python scripts/mcp_call.py <TOOL> [JSON_ARGS] [--flat] [--raw]
-```
-
-| Argument / flag | Meaning |
-|-----------------|---------|
-| `TOOL` | Tool name to call (e.g. `list_labels`). |
-| `JSON_ARGS` | Tool arguments as a JSON object. Default `{}`. |
-| `--flat` | Send flat kwargs instead of a `params` wrapper. |
-| `--raw` | Print the full JSON-RPC envelope, not just the result. |
-
-The process exit code is `0` on success and non-zero when the tool reports an
-error (`isError: true`) or no response is received. See
-[docs/USAGE.md](docs/USAGE.md#cli-client) for more examples.
-
-## IDE Integration
-
-El MCP es compatible con cualquier cliente que soporte el protocolo MCP sobre stdio.
-La configuración varía por IDE — el patrón general es:
+The server works with **any MCP client** that supports the stdio transport. Add
+an entry to your client's MCP server configuration:
 
 ```json
 {
   "mcpServers": {
-    "github-project-management": {
+    "github-projects": {
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "-e", "GITHUB_TOKEN",
-        "--env-file", "mcp/.env",
-        "github-project-mcp:latest",
+        "--env-file", "/absolute/path/to/.env",
+        "mcp-github-projects:latest",
         "python", "server.py"
       ]
     }
@@ -219,280 +118,176 @@ La configuración varía por IDE — el patrón general es:
 }
 ```
 
-Para configuración específica por IDE, ver [docs/SETUP.md](docs/SETUP.md#ide-integration).
+The config key (`github-projects`) is arbitrary — name it whatever your client
+displays. Credentials are supplied through `--env-file`; nothing sensitive lives
+in the JSON.
 
-## Registered Tools (100)
+> **IDE-specific setup** (config file locations, per-client quirks) is documented
+> in [docs/SETUP.md](docs/SETUP.md#ide-integration).
 
-### Core Operations
-| Tool | Description |
-|------|-------------|
-| `discover_ids` | Discover project/field IDs |
-| `list_project_items` | List items with filters |
-| `create_project_item` | Create issue + add to project (all board fields + defaults) |
-| `update_project_item_fields` | Set any board field — Status/Priority/Area/Work Type (SINGLE_SELECT), Estimate (NUMBER), Due date (DATE); by item id or issue/PR number |
-| `add_item_to_project` | Add an existing issue/PR to the board (owner-type aware) |
-| `set_estimate` | Set story point estimate |
-| `archive_project_item` | Archive item from board |
+---
 
-### Issue Management
-| Tool | Description |
-|------|-------------|
-| `close_issue` | Close an issue |
-| `reopen_issue` | Reopen a closed issue |
-| `comment_issue` | Add comment to issue |
-| `edit_issue` | Edit title, body, labels, milestone, assignees |
-| `add_sub_issue` | Link as sub-issue |
-| `remove_sub_issue` | Unlink sub-issue |
-| `get_issue_detail` | Full issue detail |
-| `search_issues` | Search by query |
+## Tool Catalog
 
-### Board Operations
-| Tool | Description |
-|------|-------------|
-| `move_to_status` | Move item to any status column |
-| `move_to_done` | Mark as Done |
-| `move_to_trash` | Move to Trash |
-| `bulk_update_items` | Batch update multiple items |
-| `bulk_close_issues` | Close multiple issues |
-| `bulk_assign` | Assign multiple issues |
+The server registers **100+ tools**. A category overview:
 
-### Planning & Workflows
-| Tool | Description |
-|------|-------------|
-| `sprint_planning` | Generate sprint plan |
-| `generate_release_notes` | Auto-generate release notes |
-| `complete_issue` | Full completion workflow |
-| `daily_standup` | Generate standup report |
-| `sprint_review` | Sprint review summary |
-| `triage_new_issues` | Auto-triage proposals |
-| `escalate_overdue` | Flag overdue items |
-| `create_epic` | Create parent + children (new sub-tasks and/or link existing issues); runtime board IDs |
-| `close_sprint` | Close sprint and move items |
+| Category | What it covers | Representative tools |
+|----------|----------------|----------------------|
+| **Discovery & Board** | Resolve IDs, list/filter items, create items, move across columns | `discover_ids`, `list_project_items`, `create_project_item`, `move_to_status`, `move_to_done`, `move_to_trash`, `archive_project_item` |
+| **Fields & Estimates** | Update Status/Priority/Due date, set story points | `update_project_item_fields`, `set_estimate` |
+| **Issues** | Full issue lifecycle and sub-issues | `create_project_item`, `edit_issue`, `close_issue`, `reopen_issue`, `comment_issue`, `get_issue_detail`, `search_issues`, `add_sub_issue`, `remove_sub_issue`, `list_sub_issues` |
+| **Bulk operations** | Batch updates across many items | `bulk_update_items`, `bulk_close_issues`, `bulk_assign` |
+| **Milestones & Labels** | Create/close/list milestones; create/list labels | `create_milestone`, `close_milestone`, `list_milestones`, `create_label`, `list_labels` |
+| **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
+| **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
+| **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
+| **Extended capability suite (~60)** | Reporting, roadmaps, changelogs, backlog ranking, risk registers, retrospectives | `project_health_report`, `project_export_markdown`, `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register`, `build_roadmap_markdown`, `build_sprint_retrospective` |
 
-### Metadata
-| Tool | Description |
-|------|-------------|
-| `create_milestone` | Create GitHub milestone |
-| `close_milestone` | Close milestone |
-| `list_milestones` | List milestones |
-| `create_label` | Create label |
-| `list_labels` | List labels |
-| `get_project_stats` | Board statistics |
-| `get_sprint_summary` | Current sprint metrics |
+Tools that could perform broad mutations return a `dry_run` plan by default. The
+capability suite asserts its ~60 unique additions at import time, and CI verifies
+the full registered-tool count stays at 100+.
+
+Full input/output reference: [docs/USAGE.md](docs/USAGE.md) ·
+Parameter reference: [docs/PARAMETERS.md](docs/PARAMETERS.md) ·
+Least-privilege capability matrix: [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
+
+---
 
 ## Architecture
 
+Layered, dependency-inward design. Each layer depends only on the one below it:
+
 ```
-Tool Layer (FastMCP tool definitions)
-    ↓
-Service Layer (business logic, orchestration)
-    ↓
-Client Layer (GraphQL + gh CLI + caching)
-    ↓
-GitHub APIs (GraphQL v4 + REST v3)
+MCP Client (stdio JSON-RPC)
+        │
+        ▼
+server.py          FastMCP instance — registers every tool, validates auth on startup
+        │
+        ▼
+tools/             MCP tool definitions (thin, declarative, dry_run-aware)
+        │
+        ▼
+services/          Business logic & orchestration (project / issue / field / discovery)
+        │
+        ▼
+clients/           GraphQL client + gh CLI client + metadata cache
+        │
+        ▼
+graphql/           Query & mutation strings for the GitHub GraphQL v4 API
+        │
+        ▼
+GitHub APIs        GraphQL v4 (fields, board, sub-issues) + REST v3 (issue CRUD)
 ```
 
-### Delegation Strategy
+Supporting modules at the root: `config.py` (validated Pydantic settings),
+`auth.py` (token resolution + scope checks), `capabilities.py` (tool → permission
+map), `profiles.py` (multi-target profiles), `hardening.py` and `error_handling.py`
+(runtime safety), `models/` (Pydantic response/context models).
 
-| Method | When Used |
-|--------|-----------|
-| **gh CLI** | Issue CRUD, comments, project item-add, close |
-| **Custom GraphQL** | Field updates, archival, discovery, sub-issues |
+### API delegation
 
-## Environment Variables
+| Operation kind | Backend used |
+|----------------|--------------|
+| Issue CRUD, comments, project item-add, close | `gh` CLI |
+| Field updates, archival, discovery, sub-issues | Custom GraphQL v4 |
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITHUB_TOKEN` | Yes | GitHub PAT (fine-grained or classic) |
-| `GH_PROJECT_ORG_NAME` | **Yes** | GitHub owner (organization or user login) |
-| `GH_PROJECT_REPO_NAME` | **Yes** | Repository name |
-| `GH_PROJECT_PROJECT_NUMBER` | **Yes** | Project V2 board number (1–100000) |
-| `GH_PROJECT_OWNER_TYPE` | No | `auto` (default, detects user vs org), `organization`, or `user` |
+---
 
-## Troubleshooting
+## Configuration
 
-### MCP no conecta
+All settings use the `GH_PROJECT_` prefix and are validated at startup by
+`config.py`. Target fields are **mandatory** — the server refuses to start
+without them.
+
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `GITHUB_TOKEN` | yes¹ | — | GitHub PAT (classic or fine-grained) |
+| `GH_TOKEN` | — | — | Fallback token if `GITHUB_TOKEN` is unset |
+| `GH_PROJECT_ORG_NAME` | **yes** | — | Owner: organization login or username |
+| `GH_PROJECT_REPO_NAME` | **yes** | — | Repository within the owner |
+| `GH_PROJECT_PROJECT_NUMBER` | **yes** | — | Project V2 number (1–100000) |
+| `GH_PROJECT_OWNER_TYPE` | — | `organization` | `organization` or `user` |
+| `GH_PROJECT_PROFILE` | — | — | Load `profiles/<name>.env` instead of root `.env` |
+| `GH_PROJECT_TIMEOUT_SECONDS` | — | `10` | Per-call timeout (1–120) |
+| `GH_PROJECT_RETRY_ATTEMPTS` | — | `1` | Read retries (0–5; mutations never retry) |
+| `GH_PROJECT_CACHE_TTL_HOURS` | — | `24` | Metadata cache TTL (1–720) |
+| `GH_PROJECT_MAX_ITEMS` | — | `200` | Max items per list/query (1–1000) |
+| `GH_PROJECT_PAGE_SIZE` | — | `100` | Page size (1–100) |
+
+¹ Token resolution order: `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`.
+
+The metadata cache is written atomically with owner-only permissions (`0600`),
+namespaced per `owner/repo/project`, rejects future timestamps, and is never
+reused across targets. See [docs/PARAMETERS.md](docs/PARAMETERS.md) for the full
+range table and [docs/HARDENING_200.md](docs/HARDENING_200.md) for the runtime
+hardening register.
+
+---
+
+## Development
+
+Everything runs inside Docker — there are **no host Python dependencies**. The
+`Makefile` is the entry point:
+
 ```bash
-# Verificar que la imagen existe
-docker images | grep github-project-mcp
-
-# Si no existe, construir
-docker build -t github-project-mcp:latest ./mcp
-
-# Verificar token
-echo $GITHUB_TOKEN | head -c 20
+make help        # list all targets
+make build       # build mcp-github-projects:latest
+make rebuild     # build with --no-cache
+make verify      # validate auth + scopes + target config
+make test        # run unit tests inside the container
+make syntax      # ast.parse every .py file
+make tools       # count registered tools (must be >= 100)
+make secrets     # scan the source tree for leaked credentials
+make validate    # full CI mirror: build + syntax + test + tools + secrets
+make shell       # interactive shell inside the container
+make run         # start the server (stdio) via compose.yaml
+make clean       # remove built images
 ```
 
-### Reconectar MCP
-Si el MCP se desconecta del IDE, usar la opción de reconexión del cliente MCP correspondiente.
+> If `make` is unavailable, invoke targets directly, e.g.
+> `docker run --rm --env-file .env mcp-github-projects:latest python3 scripts/verify_setup.py`.
 
-### Error de autenticación
-- Verificar que `GITHUB_TOKEN` está disponible en el entorno del contenedor
-- Tokens `github_pat_*` (fine-grained) necesitan permisos: Issues (RW), Projects (RW), Metadata (R)
-- Tokens clásicos necesitan scopes: `repo`, `project`, `read:org`
+Local validation before opening a PR (mirrors CI):
 
-## Related Documentation
+```bash
+bash scripts/validate.sh            # full run (builds image + all checks)
+bash scripts/validate.sh --quick    # reuse cached image, skip rebuild
+bash scripts/validate.sh --fix      # auto-fix known issues (e.g. UTF-8 BOM)
+```
+
+Helper scripts under `scripts/`:
+
+| Script | Purpose |
+|--------|---------|
+| `validate.sh` | Full CI mirror — run before every push/PR |
+| `preflight.sh` | Prerequisite check (Docker, token, image, target config, scopes; `--fix` supported) |
+| `scan_secrets.sh` | Token-pattern detection in tracked files |
+| `smoke_build.sh` | Minimal build + tool count sanity check |
+| `run_contract_tests.sh` | Multi-target contract suite |
+| `count_tools.py` / `check_syntax.py` / `verify_setup.py` | Individual checks used by the Makefile |
+
+Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md); security reports go
+through [SECURITY.md](SECURITY.md).
+
+---
+
+## Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [docs/SETUP.md](docs/SETUP.md) | Token setup and permissions |
-| [docs/USAGE.md](docs/USAGE.md) | Tool input/output examples |
-| [docs/PARAMETERS.md](docs/PARAMETERS.md) | Parameter reference |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors |
+| [docs/SETUP.md](docs/SETUP.md) | Token generation, rotation, and per-IDE integration |
+| [docs/USAGE.md](docs/USAGE.md) | Tool-by-tool input/output examples |
+| [docs/PARAMETERS.md](docs/PARAMETERS.md) | Full parameter and setting reference |
+| [docs/CAPABILITIES.md](docs/CAPABILITIES.md) | Tool → permission matrix for least-privilege tokens |
+| [docs/GRAPHQL_REFERENCE.md](docs/GRAPHQL_REFERENCE.md) | GraphQL queries/mutations used internally |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors and fixes |
+| [docs/HARDENING_200.md](docs/HARDENING_200.md) | Runtime hardening register |
 
-## Source locations and synchronization
+The same documents are published to the project **[Wiki](https://github.com/jersonmartinez/mcp-github-projects/wiki)**.
 
-This directory (`mcp/`) is the **canonical source of truth** for the MCP package.
+---
 
-The repository contains a synchronized copy at:
-- `app/backend/app/mcp/github_project/` — embedded in the backend for Docker builds
+## License
 
-### Sync workflow
-
-1. **Make all changes here** in `mcp/` first.
-2. Copy modified files to the embedded path:
-   ```bash
-   cp mcp/<file> app/backend/app/mcp/github_project/<file>
-   ```
-3. **Verify** with the automated check:
-   ```bash
-   ./mcp/scripts/check_sync.sh
-   ```
-
-The sync script compares all shared `.py` files (excluding `__init__.py` which is
-intentionally different in the backend copy, and infra-only files like `Dockerfile`
-and `requirements.txt`). CI runs this check on every push — divergence fails the build.
-
-### Files intentionally different in the backend copy
-
-| File | Reason |
-|------|--------|
-| `__init__.py` | Backend-specific imports + sync-source documentation |
-| `README.md` | Points back here; documents the copy policy |
-
-The backend test suite exercises the embedded copy; syntax validation must compile both trees.
-
-## Hardened runtime behavior
-
-All settings use the `GH_PROJECT_` prefix and are validated at startup:
-
-| Setting | Default | Bounds / behavior |
-|---------|---------|-------------------|
-| `GH_PROJECT_TIMEOUT_SECONDS` | `10` | 1–120 seconds |
-| `GH_PROJECT_RETRY_ATTEMPTS` | `1` | 0–5; reads only, mutations never retry |
-| `GH_PROJECT_RETRY_DELAY_SECONDS` | `2.0` | 0–60 seconds, exponential backoff |
-| `GH_PROJECT_CACHE_TTL_HOURS` | `24` | 1–720 hours |
-| `GH_PROJECT_CACHE_PATH` | `.github_project_cache.json` | Configurable local path |
-| `GH_PROJECT_PAGE_SIZE` | `100` | 1–100 |
-| `GH_PROJECT_MAX_ITEMS` | `200` | 1–1,000 |
-| `GH_PROJECT_MAX_CLI_OUTPUT_CHARS` | `1,000,000` | 10,000–10,000,000 |
-
-The metadata cache is written atomically, uses owner-only permissions (`0600`), rejects future timestamps, and is not reused when organization or project number differs. CLI and GraphQL diagnostics redact token-like values and are bounded before returning to the MCP client.
-
-## Docker-only validation
-
-Run validation without host Python tooling:
-
-```bash
-# Compile both source copies through a Python container
-tar -C . -cf - mcp app/backend/app/mcp \
-  | docker run --rm -i python:3.12-slim sh -c \
-    'mkdir -p /tmp/factib && tar -xf - -C /tmp/factib && \
-     python -m compileall -q /tmp/factib/mcp /tmp/factib/app/backend/app/mcp'
-
-# Run the backend MCP tests using the existing backend image
-tar -C . -cf - app/backend/app app/backend/tests/mcp \
-  | docker run --rm -i -e PYTHONPATH=/tmp/factib/app/backend backend:latest sh -c \
-    'mkdir -p /tmp/factib && tar -xf - -C /tmp/factib && cd /tmp/factib/app/backend && \
-     pytest -q --confcutdir=/tmp/factib/app/backend/tests/mcp tests/mcp'
-```
-
-## Local Validation (Pre-Push)
-
-**Always run before creating a PR or pushing changes.** This mirrors the CI pipeline locally and catches issues before they reach GitHub Actions.
-
-### Quick Start
-
-```bash
-# Full validation (builds image + runs all checks):
-./mcp/scripts/validate.sh
-
-# Quick mode (reuses cached image, skips rebuild):
-./mcp/scripts/validate.sh --quick
-
-# Auto-fix known issues (e.g., BOM characters):
-./mcp/scripts/validate.sh --fix
-```
-
-### What It Checks
-
-| Step | What | Same as CI step |
-|------|------|-----------------|
-| 1. BOM | Detects UTF-8 BOM bytes in Python files | N/A (prevents syntax errors) |
-| 2. Build | `docker build -t github-project-mcp:validate ./mcp` | "Build MCP image" |
-| 3. Syntax | `ast.parse` on all .py files inside the image | "Syntax check" |
-| 4. Tests | Runs test modules in `tests/` | "Run unit tests" |
-| 5. Tools | Counts registered tools (must be >= 100) | "Verify tool count" |
-| 6. Secrets | Scans for token patterns in tracked files | N/A (pre-publication) |
-
-### Available Scripts
-
-| Script | Purpose | When to Use |
-|--------|---------|-------------|
-| `scripts/validate.sh` | Full CI mirror | Before every push/PR |
-| `scripts/preflight.sh` | Prerequisite check (Docker, token, config) | First setup or env changes |
-| `scripts/scan_secrets.sh` | Secret pattern detection | Before publishing repo |
-| `scripts/smoke_build.sh` | Minimal build + tool count | Quick sanity check |
-| `scripts/run_contract_tests.sh` | Multi-target contract suite | After structural changes |
-
-### Common Issues and Fixes
-
-| Issue | Symptom | Fix |
-|-------|---------|-----|
-| BOM characters | `SyntaxError: invalid non-printable character U+FEFF` | `./mcp/scripts/validate.sh --fix` |
-| Image not built | "Image not found" in Docker commands | `docker build -t github-project-mcp:latest ./mcp` |
-| Token not set | "No GitHub token found" in preflight | `export GITHUB_TOKEN=ghp_...` |
-| Tool count < 100 | New tool not registered in server.py | Add `mcp.tool()(your_tool)` in server.py |
-
-The complete 200-item register, including implemented and planned work, is in [`docs/HARDENING_200.md`](HARDENING_200.md).
-
-## Extended capability suite: 60 additional tools
-
-The server exposes 100+ tools in total: the original 40 operational tools plus 60 focused capabilities from `tools/meta/capability_suite.py`.
-
-| Group | Purpose | Examples |
-|-------|---------|----------|
-| Issue and Markdown quality | Validate, normalize, summarize, template, bundle and review issues | `validate_issue_markdown`, `build_issue_template`, `build_issue_review_checklist` |
-| Comment system | Create progress, plan, blocker and resolution comments; list/search/edit comments | `comment_issue_progress`, `comment_issue_blocker`, `list_issue_comments` |
-| Project reporting | Health, status, priority, assignee, due-date and field reports | `project_health_report`, `project_due_date_risk`, `project_field_options_report` |
-| Project planning | Export/import Markdown, metadata synchronization plans and filtered bulk plans | `project_export_markdown`, `project_sync_issue_metadata`, `project_bulk_status_by_filter` |
-| Strategic automation | Sprint plans, backlog ranking, risk/dependency reports and stakeholder updates | `plan_next_sprint`, `prioritize_backlog`, `generate_risk_register` |
-| Roadmaps and decisions | Changelogs, release checklists, roadmaps, retrospectives and automation decisions | `generate_changelog_from_issues`, `build_roadmap_markdown`, `build_sprint_retrospective` |
-
-Tools that could cause broad mutations return a `dry_run` plan by default. Direct comment tools perform one visible comment operation per invocation. The capability catalog asserts 60 unique additions at import time, and Docker validation confirms 100 registered FastMCP tools in both source copies.
-
-## Distribution
-
-### Docker Image
-
-The MCP server is distributed as a standalone Docker image. Build locally:
-
-```bash
-docker build -t github-project-mcp:latest ./mcp
-```
-
-### CI/CD Pipeline
-
-The `mcp-ci.yaml` workflow runs automatically on:
-- Push to `main` when files under `mcp/` change
-- Pull requests touching `mcp/` paths
-
-Pipeline stages:
-1. **Build** — Docker image build verification
-2. **Syntax check** — AST parsing of all Python files
-3. **Unit tests** — pytest suite execution
-4. **Tool count verification** — Ensures ≥100 registered tools
-
-### Versioning
-
-This MCP server follows [Semantic Versioning](https://semver.org/). See [CHANGELOG.md](CHANGELOG.md) for release history.
+Released under the [MIT License](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for
+release history; this project follows [Semantic Versioning](https://semver.org/).

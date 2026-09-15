@@ -11,9 +11,9 @@
 Run the preflight check to validate all prerequisites:
 
 ```bash
-./mcp/scripts/preflight.sh
+./scripts/preflight.sh
 # Or with automatic resolution:
-./mcp/scripts/preflight.sh --fix
+./scripts/preflight.sh --fix
 ```
 
 ---
@@ -48,7 +48,7 @@ export GITHUB_TOKEN=ghp_your_token_here
 echo 'export GITHUB_TOKEN=ghp_...' >> ~/.bashrc
 
 # Option C: Use .env file (auto-loaded by Docker --env-file)
-echo 'GITHUB_TOKEN=ghp_...' > mcp/.env
+echo 'GITHUB_TOKEN=ghp_...' > .env
 # ⚠️ .env is in .gitignore — never commit it
 ```
 
@@ -131,10 +131,10 @@ Rotate credentials periodically (recommended: every 90 days) or immediately if c
 # 2. Update your local environment
 export GITHUB_TOKEN=ghp_new_token_here
 # Or update .env file:
-echo 'GITHUB_TOKEN=ghp_new_token_here' > mcp/.env
+echo 'GITHUB_TOKEN=ghp_new_token_here' > .env
 
 # 3. Verify the new token works
-./mcp/scripts/preflight.sh
+./scripts/preflight.sh
 
 # 4. Revoke the old token
 #    Go to: github.com/settings/tokens
@@ -147,7 +147,7 @@ echo 'GITHUB_TOKEN=ghp_new_token_here' > mcp/.env
 ### Post-Rotation Checklist
 
 - [ ] New token has required scopes (`repo`, `project`, `read:org`)
-- [ ] MCP server starts successfully with `./mcp/scripts/preflight.sh`
+- [ ] MCP server starts successfully with `./scripts/preflight.sh`
 - [ ] Old token is revoked (not just unused)
 - [ ] CI/CD secret is updated if applicable
 - [ ] No residual references to old token in shell history
@@ -160,7 +160,7 @@ echo 'GITHUB_TOKEN=ghp_new_token_here' > mcp/.env
 # 3. Generate replacement with same scopes
 # 4. Scan for unauthorized access in the audit log
 # 5. Run secret scanner to verify no persistence:
-./mcp/scripts/scan_secrets.sh --history
+./scripts/scan_secrets.sh --history
 ```
 
 ---
@@ -217,11 +217,12 @@ optional and only apply to fields that exist on the board.
 Pre-built profiles live in `profiles/`:
 
 ```bash
-# Example:
-cp profiles/factib.env .env
+# For an organization project:
+cp profiles/example-org.env .env
+# Edit with your values
 
-# For a personal project:
-cp profiles/example.env .env
+# For a personal (user) project:
+cp profiles/user-example.env .env
 # Edit with your values
 ```
 
@@ -242,7 +243,7 @@ export GH_PROJECT_OWNER_TYPE=auto
 ### Build
 
 ```bash
-docker build -t github-project-mcp:latest ./mcp
+docker build -t mcp-github-projects:latest .
 ```
 
 The image is ~150MB, based on `python:3.12-slim`, includes `gh` CLI, and runs as non-root user `mcp` (uid 1000).
@@ -258,59 +259,64 @@ docker run --rm -i \
   -e GH_PROJECT_ORG_NAME \
   -e GH_PROJECT_REPO_NAME \
   -e GH_PROJECT_PROJECT_NUMBER \
-  github-project-mcp:latest
+  mcp-github-projects:latest
 
 # With .env file:
 docker run --rm -i \
-  -e GITHUB_TOKEN \
-  --env-file mcp/.env \
-  github-project-mcp:latest
+  --env-file .env \
+  mcp-github-projects:latest
 
-# With profile:
+# With a named profile:
 docker run --rm -i \
   -e GITHUB_TOKEN \
-  --env-file mcp/profiles/factib.env \
-  github-project-mcp:latest
+  --env-file profiles/example-org.env \
+  mcp-github-projects:latest
 ```
 
-### IDE Integration (Kiro / VS Code)
+<a id="ide-integration"></a>
+### MCP Client Integration
 
-The MCP is configured in `.kiro/settings/mcp.json`:
+The server works with **any MCP client** that supports the stdio transport. The
+config shape is the same everywhere — only the location of the config file
+differs per client. Add an entry pointing the client at the `docker run` command:
 
 ```json
 {
   "mcpServers": {
-    "github-project-management": {
+    "github-projects": {
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "--name", "factib_mcp",
-        "-e", "GITHUB_TOKEN",
-        "github-project-mcp:latest",
+        "--env-file", "/absolute/path/to/.env",
+        "mcp-github-projects:latest",
         "python", "server.py"
-      ],
-      "disabled": false
+      ]
     }
   }
 }
 ```
 
-The `-e GITHUB_TOKEN` flag passes the variable name (not value) — Docker reads it from the host environment at runtime.
+Notes:
+
+- The server key (`github-projects`) is arbitrary — it is only the display name.
+- Prefer `--env-file` so no token value appears in the config JSON. If you pass
+  `-e GITHUB_TOKEN` instead, Docker forwards the variable **name** and reads its
+  value from the host environment at runtime.
+- Consult your MCP client's documentation for where its server-config file lives.
 
 ### Verify
 
 ```bash
 # Quick smoke test:
 echo '{}' | docker run --rm -i \
-  -e GITHUB_TOKEN \
-  --env-file mcp/.env \
-  github-project-mcp:latest
+  --env-file .env \
+  mcp-github-projects:latest
 
 # Full preflight:
-./mcp/scripts/preflight.sh
+./scripts/preflight.sh
 
 # Secret scan:
-./mcp/scripts/scan_secrets.sh
+./scripts/scan_secrets.sh
 ```
 
 ---
@@ -319,9 +325,9 @@ echo '{}' | docker run --rm -i \
 
 ### What is safe to commit
 
-- `.kiro/settings/mcp.json` — contains command structure, NOT token values
-- `mcp/profiles/*.env` — contains target config (org/repo/project), NOT tokens
-- `mcp/docs/SETUP.md` — this file
+- Your MCP client's server-config file — it contains the command structure, NOT token values
+- `profiles/*.env` — target config (org/repo/project), NOT tokens
+- `docs/SETUP.md` — this file
 
 ### What must NEVER be committed
 
@@ -335,10 +341,10 @@ Run before publishing or sharing the repository:
 
 ```bash
 # Scan working tree
-./mcp/scripts/scan_secrets.sh
+./scripts/scan_secrets.sh
 
 # Scan git history (pre-publication)
-./mcp/scripts/scan_secrets.sh --history
+./scripts/scan_secrets.sh --history
 ```
 
 ### Cache Isolation
