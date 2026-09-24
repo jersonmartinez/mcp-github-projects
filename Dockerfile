@@ -32,7 +32,10 @@ RUN useradd --create-home --shell /bin/false --uid 1000 mcp \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-dev.txt .
+ARG INSTALL_TEST_DEPS=false
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ "$INSTALL_TEST_DEPS" = "true" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
 
 COPY --chown=mcp:mcp . .
 

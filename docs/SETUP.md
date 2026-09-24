@@ -373,3 +373,8 @@ Cache files have `0600` permissions and are never shared between targets.
 | "Permission denied" on cache | Container user issue | Image uses `/home/mcp/.cache` (writable) |
 | Token works locally but not in CI | Secret not set | Check Settings → Secrets → `GH_TOKEN` |
 | Fine-grained token "scope error" | FG tokens don't report scopes | MCP auto-detects and skips validation |
+
+The production image installs only `requirements.txt`. `make test` and the CI
+test job build a separate image with pinned `requirements-dev.txt`, including
+pytest, so runtime artifacts stay smaller and the validation path remains
+explicit and reproducible.

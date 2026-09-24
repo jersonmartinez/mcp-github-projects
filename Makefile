@@ -19,6 +19,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 IMAGE       := github-project-mcp:latest
+TEST_IMAGE  := github-project-mcp:test
 COMPOSE     := docker compose -f compose.yaml
 ENV_FILE    := .env
 DOCKER_RUN  := docker run --rm --env-file $(ENV_FILE) $(IMAGE)
@@ -49,12 +50,9 @@ verify: _check_env ## Validate auth, scopes, and target configuration
 
 .PHONY: test
 test: _check_env ## Run unit tests inside Docker
-	@$(DOCKER_RUN) python3 -m pytest tests/ -v --tb=short 2>/dev/null || \
-		$(DOCKER_RUN) python3 -c "\
-import os, sys; os.chdir('/app'); sys.path.insert(0,'/app'); \
-[exec(open(f'tests/{f}').read()) for f in sorted(os.listdir('tests')) \
- if f.startswith('test_') and f.endswith('.py') and f != 'test_contracts.py'];\
-print('✅ Tests passed')"
+	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
+	@docker run --rm $(TEST_IMAGE) \
+		python3 -m pytest tests/ -v --tb=short --ignore=tests/test_contracts.py
 
 .PHONY: tools
 tools: _check_env ## Count registered MCP tools (must be >= 100)
@@ -97,6 +95,7 @@ preflight: ## Check host prerequisites (Docker, token, image)
 .PHONY: clean
 clean: ## Remove MCP Docker images
 	@docker rmi $(IMAGE) 2>/dev/null || true
+	@docker rmi $(TEST_IMAGE) 2>/dev/null || true
 	@docker rmi github-project-mcp:validate 2>/dev/null || true
 	@docker rmi github-project-mcp:ci 2>/dev/null || true
 	@echo "✅ Images removed"
