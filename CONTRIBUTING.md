@@ -75,6 +75,7 @@ Import shared infrastructure from the **canonical** paths (`core.*`, `clients.*`
 - All Python files pass `ast.parse` syntax check
 - Docker image builds successfully
 - New tools have at least one test
+- Every required GitHub Actions check has completed successfully before the PR is presented as ready; pending, failed, or missing checks block delivery
 
 ## Code Style
 
