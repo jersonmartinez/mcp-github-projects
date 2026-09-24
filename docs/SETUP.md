@@ -226,6 +226,11 @@ cp profiles/user-example.env .env
 # Edit with your values
 ```
 
+When a named profile is loaded by `GH_PROJECT_PROFILE`, the values from that
+profile file take precedence over process-level `GH_PROJECT_*` variables for
+its target and cache namespace. Profile files must not contain tokens, and the
+metadata cache is namespaced by owner, repository, and project number.
+
 ### Using Environment Variables
 
 ```bash
