@@ -1,71 +1,46 @@
-"""Test that the example profile loads correctly.
+"""Tests for mandatory target configuration."""
 
-Validates that the profile-based configuration still works through
-the profile mechanism after removing hardcoded defaults.
-"""
-
-import os
 import sys
 
-# Simulate an example profile environment
-os.environ["GH_PROJECT_ORG_NAME"] = "ExampleOrg"
-os.environ["GH_PROJECT_REPO_NAME"] = "ExampleRepo"
-os.environ["GH_PROJECT_PROJECT_NUMBER"] = "1"
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
-from config import GitHubProjectSettings
+from config import GitHubProjectSettings  # noqa: E402
 
 
-def test_factib_profile_loads():
-    """Example profile produces the expected settings."""
+@pytest.fixture
+def configured_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a deterministic target for one test only."""
+    monkeypatch.setenv("GH_PROJECT_ORG_NAME", "ExampleOrg")
+    monkeypatch.setenv("GH_PROJECT_REPO_NAME", "ExampleRepo")
+    monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "1")
+
+
+def test_factib_profile_loads(configured_target: None) -> None:
+    """Example target configuration produces expected settings."""
     settings = GitHubProjectSettings()
     assert settings.org_name == "ExampleOrg"
     assert settings.repo_name == "ExampleRepo"
     assert settings.project_number == 1
 
 
-def test_missing_target_raises():
+def test_missing_target_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Server refuses to start without mandatory target fields."""
-    # Clear the env vars
     for key in ("GH_PROJECT_ORG_NAME", "GH_PROJECT_REPO_NAME", "GH_PROJECT_PROJECT_NUMBER"):
-        os.environ.pop(key, None)
+        monkeypatch.delenv(key, raising=False)
 
-    try:
+    with pytest.raises(ValueError, match="Missing required configuration"):
         GitHubProjectSettings()
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "Missing required configuration" in str(e)
 
 
-def test_partial_target_raises():
+def test_partial_target_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Server rejects partial target configuration."""
-    os.environ["GH_PROJECT_ORG_NAME"] = "some-org"
-    os.environ.pop("GH_PROJECT_REPO_NAME", None)
-    os.environ.pop("GH_PROJECT_PROJECT_NUMBER", None)
+    monkeypatch.setenv("GH_PROJECT_ORG_NAME", "some-org")
+    monkeypatch.delenv("GH_PROJECT_REPO_NAME", raising=False)
+    monkeypatch.delenv("GH_PROJECT_PROJECT_NUMBER", raising=False)
 
-    try:
+    with pytest.raises(ValueError) as exc_info:
         GitHubProjectSettings()
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "GH_PROJECT_REPO_NAME" in str(e)
-        assert "GH_PROJECT_PROJECT_NUMBER" in str(e)
-
-
-if __name__ == "__main__":
-    # Reset lru_cache between tests
-    from config import get_settings
-    get_settings.cache_clear()
-
-    test_factib_profile_loads()
-    print("✅ test_factib_profile_loads passed")
-
-    get_settings.cache_clear()
-    test_missing_target_raises()
-    print("✅ test_missing_target_raises passed")
-
-    get_settings.cache_clear()
-    test_partial_target_raises()
-    print("✅ test_partial_target_raises passed")
-
-    print("\nAll compatibility tests passed.")
+    assert "GH_PROJECT_REPO_NAME" in str(exc_info.value)
+    assert "GH_PROJECT_PROJECT_NUMBER" in str(exc_info.value)

@@ -15,13 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Simulate test environment (needed before importing config)
-os.environ.setdefault("GH_PROJECT_ORG_NAME", "jersonmartinez")
-os.environ.setdefault("GH_PROJECT_REPO_NAME", "mcp-github-projects")
-os.environ.setdefault("GH_PROJECT_PROJECT_NUMBER", "11")
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from core.config import get_settings  # noqa: E402
 from clients.gh_cli_client import CLIError, CommandResult  # noqa: E402
 from tools.nice_to_have import (  # noqa: E402
     CreatePullRequestInput,
@@ -33,6 +27,17 @@ PR_API_RESPONSE = {
     "html_url": "https://github.com/jersonmartinez/mcp-github-projects/pull/123",
     "state": "open",
 }
+
+
+@pytest.fixture(autouse=True)
+def configured_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep this module independent from configuration-mutating tests."""
+    monkeypatch.setenv("GH_PROJECT_ORG_NAME", "jersonmartinez")
+    monkeypatch.setenv("GH_PROJECT_REPO_NAME", "mcp-github-projects")
+    monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "11")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def _cmd_result(stdout: str) -> CommandResult:

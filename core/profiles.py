@@ -161,15 +161,52 @@ def get_settings_for_profile(profile_name: str = "") -> "GitHubProjectSettings":
 
 
 def _build_settings_from_env_file(env_file: Path) -> "GitHubProjectSettings":
-    """Construct GitHubProjectSettings reading from a specific env file."""
+    """Construct settings from a profile file without process-env leakage.
+
+    Named profiles are explicit targets. Process environment variables must not
+    silently override their owner, repository, project, or cache namespace.
+    Tokens remain forbidden in profile files and are still resolved separately.
+    """
+    from dotenv import dotenv_values
     from core.config import GitHubProjectSettings
+
+    raw_values = dotenv_values(env_file)
+    values: dict[str, object] = {}
+    for key, value in raw_values.items():
+        if value is None or not key.startswith("GH_PROJECT_"):
+            continue
+        field_name = key.removeprefix("GH_PROJECT_").lower()
+        values[field_name] = value
+
+    if "cache_path" not in values:
+        org = str(values.get("org_name", "default")).strip() or "default"
+        repo = str(values.get("repo_name", "default")).strip() or "default"
+        project = str(values.get("project_number", "0")).strip() or "0"
+        namespace = f"{org}/{repo}/project-{project}"
+        cache_home = os.environ.get("XDG_CACHE_HOME", "").strip()
+        if cache_home:
+            values["cache_path"] = (
+                Path(cache_home).expanduser()
+                / "github-project-mcp"
+                / namespace
+                / "metadata.json"
+            )
+        else:
+            home = Path.home()
+            if home.exists() and os.access(home, os.W_OK):
+                values["cache_path"] = (
+                    home
+                    / ".cache"
+                    / "github-project-mcp"
+                    / namespace
+                    / "metadata.json"
+                )
 
     class _ProfileSettings(GitHubProjectSettings):
         model_config = SettingsConfigDict(
             env_prefix="GH_PROJECT_",
-            env_file=str(env_file),
-            env_file_encoding="utf-8",
+            env_file=None,
             extra="ignore",
         )
 
-    return _ProfileSettings()
+    return _ProfileSettings(**values)
