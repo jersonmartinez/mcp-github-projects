@@ -50,6 +50,7 @@ from tools.meta.nice_to_have import (
     create_pull_request,
     bulk_assign,
 )
+from tools.repositories import create_repository
 from tools.planning.planning import (
     sprint_planning,
     generate_release_notes,
@@ -111,6 +112,7 @@ mcp.tool()(get_project_stats)
 mcp.tool()(get_sprint_summary)
 mcp.tool()(link_pull_request)
 mcp.tool()(create_pull_request)
+mcp.tool()(create_repository)
 mcp.tool()(bulk_assign)
 mcp.tool()(sprint_planning)
 mcp.tool()(generate_release_notes)

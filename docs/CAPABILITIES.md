@@ -19,6 +19,7 @@ organized by capability domain. Use this to configure least-privilege tokens.
 | `labels.write` | Create and modify repository labels |
 | `pull_requests.read` | Read PR details, linked issues, merge status |
 | `pull_requests.write` | Link PRs, close issues on merge |
+| `repositories.write` | Create repositories for a user or organization |
 
 ---
 
@@ -253,3 +254,21 @@ organized by capability domain. Use this to configure least-privilege tokens.
 2. The `discover_ids` tool is required on first use to resolve project/field IDs; it caches results.
 3. Bulk operations (`bulk_close_issues`, `bulk_update_items`, `bulk_assign`) combine multiple write calls — enforce the same permissions as single-item equivalents.
 4. Workflow tools (`complete_issue`, `create_epic`, etc.) aggregate multiple operations and require the union of all sub-operation capabilities.
+
+
+## Repository Provisioning
+
+| Tool | Capabilities | Module |
+|------|--------------|--------|
+| `create_repository` | `repositories.write` | repositories.py |
+
+`create_repository` creates a repository for an explicitly selected user or
+organization owner. The caller must provide or inherit the owner, choose an
+explicit visibility (`public`, `private`, or organization-only `internal`),
+and may request an initial README, GitHub gitignore template, or license.
+Duplicate names and invalid visibility combinations return classified
+validation errors. Raw GitHub responses and credentials are never exposed.
+
+For least privilege, repository creation should be performed with a token that
+has repository administration permission for the selected owner. Do not grant
+that permission to read-only automation tokens.
