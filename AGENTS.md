@@ -231,7 +231,9 @@ before opening/updating the PR. Keep the PR focused on one issue.
 behavior, update the relevant docs (`README.md`, `docs/**`, and this file if the
 workflow changes) in the *same* PR. No undocumented tooling.
 
-**Before proposing a PR** — run `make validate` and confirm a clean pass.
+**Before proposing a PR** — run `make validate`, confirm a clean pass, and verify
+that every required GitHub Actions check has completed successfully. Pending,
+failed, or missing checks block delivery as ready to review.
 
 ---
 
