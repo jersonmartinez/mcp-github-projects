@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mcp.hardening import parse_json_array, parse_json_items
+from core.hardening import parse_json_array, parse_json_items
 
 
 class TestParseJsonItems:

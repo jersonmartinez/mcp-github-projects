@@ -138,6 +138,7 @@ The server registers **100+ tools**. A category overview:
 | **Issues** | Full issue lifecycle and sub-issues | `create_project_item`, `edit_issue`, `close_issue`, `reopen_issue`, `comment_issue`, `get_issue_detail`, `search_issues`, `add_sub_issue`, `remove_sub_issue`, `list_sub_issues` |
 | **Bulk operations** | Batch updates across many items | `bulk_update_items`, `bulk_close_issues`, `bulk_assign` |
 | **Milestones & Labels** | Create/close/list milestones; create/list labels | `create_milestone`, `close_milestone`, `list_milestones`, `create_label`, `list_labels` |
+| **Repository provisioning** | Create a user or organization repository with explicit visibility | `create_repository` |
 | **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
 | **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |

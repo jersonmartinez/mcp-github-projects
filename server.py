@@ -50,6 +50,7 @@ from tools.meta.nice_to_have import (
     create_pull_request,
     bulk_assign,
 )
+from tools.repositories import create_repository
 from tools.planning.planning import (
     sprint_planning,
     generate_release_notes,
@@ -73,6 +74,13 @@ from tools.pull_requests.pr_issue_lifecycle import (
     sync_closed_items_to_done,
 )
 from tools.meta import capability_suite
+from tools.project_provisioning import (
+    create_project,
+    update_project,
+    create_project_field,
+    link_repository,
+    list_projects,
+)
 
 # ── FastMCP Server Instance ──────────────────────────────────────────────────
 
@@ -111,6 +119,7 @@ mcp.tool()(get_project_stats)
 mcp.tool()(get_sprint_summary)
 mcp.tool()(link_pull_request)
 mcp.tool()(create_pull_request)
+mcp.tool()(create_repository)
 mcp.tool()(bulk_assign)
 mcp.tool()(sprint_planning)
 mcp.tool()(generate_release_notes)
@@ -128,6 +137,11 @@ mcp.tool()(get_pr_linked_issues)
 mcp.tool()(validate_issue_closure_readiness)
 mcp.tool()(close_issue_on_pr_merge)
 mcp.tool()(sync_closed_items_to_done)
+mcp.tool()(create_project)
+mcp.tool()(update_project)
+mcp.tool()(create_project_field)
+mcp.tool()(link_repository)
+mcp.tool()(list_projects)
 
 # Register the extended capability suite (60 additional tools).
 for _tool_name in capability_suite.CAPABILITY_TOOL_NAMES:

@@ -74,3 +74,105 @@ mutation AddItemToProject($projectId: ID!, $contentId: ID!) {
   }
 }
 """.strip()
+
+# ── Provisioning mutations (project / field / option creation) ───────────────
+# These power the project-provisioning tools: creating a Project V2 board,
+# adding custom single-select and typed fields, and appending select options.
+
+CREATE_PROJECT_MUTATION: str = """
+mutation CreateProject($ownerId: ID!, $title: String!) {
+  createProjectV2(input: {
+    ownerId: $ownerId
+    title: $title
+  }) {
+    projectV2 {
+      id
+      number
+      title
+      url
+      public
+    }
+  }
+}
+""".strip()
+
+# Update a project's metadata (short description, README, visibility, closed).
+UPDATE_PROJECT_MUTATION: str = """
+mutation UpdateProject($projectId: ID!, $public: Boolean, $shortDescription: String, $readme: String, $closed: Boolean) {
+  updateProjectV2(input: {
+    projectId: $projectId
+    public: $public
+    shortDescription: $shortDescription
+    readme: $readme
+    closed: $closed
+  }) {
+    projectV2 {
+      id
+      number
+      title
+      url
+      public
+      shortDescription
+    }
+  }
+}
+""".strip()
+
+# Create a single-select field with its initial options in one call.
+# GitHub requires at least one option when dataType is SINGLE_SELECT.
+CREATE_SINGLE_SELECT_FIELD_MUTATION: str = """
+mutation CreateSingleSelectField($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
+  createProjectV2Field(input: {
+    projectId: $projectId
+    dataType: SINGLE_SELECT
+    name: $name
+    singleSelectOptions: $options
+  }) {
+    projectV2Field {
+      ... on ProjectV2SingleSelectField {
+        id
+        name
+        dataType
+        options {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+""".strip()
+
+# Create a typed (TEXT / NUMBER / DATE) field.
+CREATE_TYPED_FIELD_MUTATION: str = """
+mutation CreateTypedField($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!) {
+  createProjectV2Field(input: {
+    projectId: $projectId
+    dataType: $dataType
+    name: $name
+  }) {
+    projectV2Field {
+      ... on ProjectV2Field {
+        id
+        name
+        dataType
+      }
+    }
+  }
+}
+""".strip()
+
+# Link an existing repository to a project (so repo issues can be added).
+LINK_REPOSITORY_MUTATION: str = """
+mutation LinkRepo($projectId: ID!, $repositoryId: ID!) {
+  linkProjectV2ToRepository(input: {
+    projectId: $projectId
+    repositoryId: $repositoryId
+  }) {
+    repository {
+      id
+      nameWithOwner
+    }
+  }
+}
+""".strip()

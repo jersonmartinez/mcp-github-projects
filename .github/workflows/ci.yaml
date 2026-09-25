@@ -1,0 +1,110 @@
+# CI
+# Main continuous-integration pipeline for the GitHub Project MCP server.
+# Builds the Docker image once, then runs syntax, tests, tool-count regression,
+# and secret scanning against it.
+name: CI
+run-name: 'CI — ${{ github.ref_name }}'
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: github-project-mcp:ci
+  DOCKER_BUILDKIT: '0'
+
+jobs:
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build image
+        run: DOCKER_BUILDKIT=0 docker build -t "$IMAGE" .
+      - name: Export image artifact
+        run: docker save "$IMAGE" | gzip > image.tar.gz
+      - name: Upload image artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mcp-image
+          path: image.tar.gz
+          retention-days: 1
+
+  syntax:
+    name: Python Syntax
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Download image artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mcp-image
+      - name: Load image
+        run: docker load < image.tar.gz
+      - name: Check Python syntax
+        run: docker run --rm "$IMAGE" python3 scripts/check_syntax.py
+
+  test:
+    name: Tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build test image
+        run: DOCKER_BUILDKIT=0 docker build --build-arg INSTALL_TEST_DEPS=true -t github-project-mcp:test .
+      - name: Run unit tests
+        run: docker run --rm github-project-mcp:test python3 -m pytest tests/ -v --tb=short --ignore=tests/test_contracts.py
+
+  tools:
+    name: Tool-Count Regression
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Download image artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mcp-image
+      - name: Load image
+        run: docker load < image.tar.gz
+      - name: Count registered tools
+        run: docker run --rm "$IMAGE" python3 scripts/count_tools.py
+
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan source tree for leaked credentials
+        run: bash scripts/scan_secrets.sh
