@@ -83,7 +83,7 @@ async def repository_health_summary(params: RepoHealthInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         repo = await _api(f"repos/{_repo()}")
-        open_issues = await _api(f"repos/{_repo()}/issues", "-f", f"state=open", "-f", f"per_page={params.limit}")
+        open_issues = await _api(f"repos/{_repo()}/issues?state=open&per_page={params.limit}")
         issues = [x for x in open_issues if "pull_request" not in x]
         missing = {"assignee": 0, "labels": 0, "milestone": 0}
         for issue in issues:
@@ -101,7 +101,7 @@ async def pull_request_lifecycle_summary(params: NumberInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         pr = await _api(f"repos/{_repo()}/pulls/{params.number}")
-        reviews_raw = await _api(f"repos/{_repo()}/pulls/{params.number}/reviews", "-f", "per_page=100")
+        reviews_raw = await _api(f"repos/{_repo()}/pulls/{params.number}/reviews?per_page=100")
         if isinstance(reviews_raw, list):
             reviews = reviews_raw
         elif isinstance(reviews_raw, dict) and isinstance(reviews_raw.get("reviews"), list):
@@ -118,7 +118,7 @@ async def issue_activity_digest(params: NumberInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         issue = await _api(f"repos/{_repo()}/issues/{params.number}")
-        comments = await _api(f"repos/{_repo()}/issues/{params.number}/comments", "-f", "per_page=100")
+        comments = await _api(f"repos/{_repo()}/issues/{params.number}/comments?per_page=100")
         authors: dict[str, int] = {}
         for comment in comments:
             login = (comment.get("user") or {}).get("login", "unknown")
@@ -134,7 +134,7 @@ async def workflow_run_diagnostic_summary(params: RunInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         run = await _api(f"repos/{_repo()}/actions/runs/{params.run_id}")
-        jobs = await _api(f"repos/{_repo()}/actions/runs/{params.run_id}/jobs", "-f", "per_page=100")
+        jobs = await _api(f"repos/{_repo()}/actions/runs/{params.run_id}/jobs?per_page=100")
         rows = []
         for job in jobs.get("jobs", []):
             failed = [step.get("name") for step in job.get("steps") or [] if step.get("conclusion") not in (None, "success", "skipped", "neutral")]
@@ -150,7 +150,7 @@ async def check_conclusion_summary(params: NumberInput) -> dict:
         await get_service_factory().ensure_auth()
         pr = await _api(f"repos/{_repo()}/pulls/{params.number}")
         sha = (pr.get("head") or {}).get("sha")
-        checks = await _api(f"repos/{_repo()}/commits/{sha}/check-runs", "-f", "per_page=100")
+        checks = await _api(f"repos/{_repo()}/commits/{sha}/check-runs?per_page=100")
         counts: dict[str, int] = {}
         for check in checks.get("check_runs", []):
             key = check.get("conclusion") or check.get("status") or "unknown"
@@ -166,7 +166,7 @@ async def issue_metadata_consistency_report(params: ConsistencyInput) -> dict:
     """Find open issues missing one or more fields needed for reliable automation."""
     try:
         await get_service_factory().ensure_auth()
-        raw = await _api(f"repos/{_repo()}/issues", "-f", "state=open", "-f", f"per_page={params.limit}")
+        raw = await _api(f"repos/{_repo()}/issues?state=open&per_page={params.limit}")
         issues = [x for x in raw if "pull_request" not in x]
         gaps = []
         for issue in issues:
@@ -186,7 +186,7 @@ async def issue_closure_readiness_report(params: NumberInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         issue = await _api(f"repos/{_repo()}/issues/{params.number}")
-        timeline = await _api(f"repos/{_repo()}/issues/{params.number}/timeline", "-f", "per_page=100")
+        timeline = await _api(f"repos/{_repo()}/issues/{params.number}/timeline?per_page=100")
         linked = [{"number": event.get("source", {}).get("issue", {}).get("number"), "merged": event.get("source", {}).get("issue", {}).get("pull_request", {}).get("merged_at") is not None} for event in timeline if event.get("event") in ("cross-referenced", "connected") and event.get("source")]
         reasons = []
         if issue.get("state") != "closed": reasons.append("issue is open")
@@ -201,7 +201,7 @@ async def label_milestone_consistency_report(params: ConsistencyInput) -> dict:
     """Report missing planning metadata and inconsistent priority labels on open issues."""
     try:
         await get_service_factory().ensure_auth()
-        raw = await _api(f"repos/{_repo()}/issues", "-f", "state=open", "-f", f"per_page={params.limit}")
+        raw = await _api(f"repos/{_repo()}/issues?state=open&per_page={params.limit}")
         issues = [x for x in raw if "pull_request" not in x]
         rows = []
         for issue in issues:
@@ -220,8 +220,7 @@ async def paginated_issue_page(params: PageInput) -> dict:
     """Return one explicit issue page with query, page, and truncation metadata."""
     try:
         await get_service_factory().ensure_auth()
-        args = ["-f", f"state={params.state}", "-f", f"per_page={params.per_page}", "-f", f"page={params.page}"]
-        raw = await _api(f"repos/{_repo()}/issues", *args)
+        raw = await _api(f"repos/{_repo()}/issues?state={params.state}&per_page={params.per_page}&page={params.page}")
         issues = [x for x in raw if "pull_request" not in x]
         return ToolSuccess(data={"query": params.query, "state": params.state, "page": params.page, "per_page": params.per_page, "count": len(issues), "has_more": len(issues) == params.per_page, "truncated": len(issues) == params.per_page, "issues": [_row(x) for x in issues]}).model_dump()
     except Exception as exc:
