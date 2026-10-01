@@ -101,7 +101,13 @@ async def pull_request_lifecycle_summary(params: NumberInput) -> dict:
     try:
         await get_service_factory().ensure_auth()
         pr = await _api(f"repos/{_repo()}/pulls/{params.number}")
-        reviews = await _api(f"repos/{_repo()}/pulls/{params.number}/reviews", "-f", "per_page=100")
+        reviews_raw = await _api(f"repos/{_repo()}/pulls/{params.number}/reviews", "-f", "per_page=100")
+        if isinstance(reviews_raw, list):
+            reviews = reviews_raw
+        elif isinstance(reviews_raw, dict) and isinstance(reviews_raw.get("reviews"), list):
+            reviews = reviews_raw["reviews"]
+        else:
+            reviews = []
         return ToolSuccess(data={"number": params.number, "url": pr.get("html_url"), "state": pr.get("state"), "draft": pr.get("draft", False), "merged": pr.get("merged", False), "mergeable": pr.get("mergeable"), "mergeable_state": pr.get("mergeable_state"), "head_sha": (pr.get("head") or {}).get("sha"), "head_ref": (pr.get("head") or {}).get("ref"), "base": (pr.get("base") or {}).get("ref"), "review_states": {state: sum(1 for review in reviews if review.get("state") == state) for state in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED")}, "age_days": _age_days(pr.get("created_at")), "updated_age_days": _age_days(pr.get("updated_at"))}).model_dump()
     except Exception as exc:
         return handle_tool_error(exc, context="Pull request lifecycle summary failed")

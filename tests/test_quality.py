@@ -16,6 +16,7 @@ from tools.quality import (
     check_conclusion_summary,
     issue_metadata_consistency_report,
     paginated_issue_page,
+    pull_request_lifecycle_summary,
     repository_health_summary,
     response_diagnostics,
 )
@@ -99,6 +100,19 @@ async def test_metadata_report_names_missing_fields() -> None:
     assert result["data"]["incomplete"] == 1
     assert set(result["data"]["issues"][0]["missing"]) == {"title", "body", "labels", "assignee"}
 
+
+
+@pytest.mark.anyio
+async def test_pull_request_lifecycle_accepts_wrapped_reviews_payload() -> None:
+    gh = RoutingGH({
+        f"{REPO}/pulls/8": {"state": "open", "head": {"sha": "abc", "ref": "feat/x"}, "base": {"ref": "main"}},
+        f"{REPO}/pulls/8/reviews": {"reviews": [{"state": "APPROVED"}]},
+    })
+    with use_service_factory(gh_client=gh):
+        result = await pull_request_lifecycle_summary(NumberInput(number=8))
+    assert result["ok"] is True
+    assert result["data"]["head_ref"] == "feat/x"
+    assert result["data"]["review_states"]["APPROVED"] == 1
 
 @pytest.mark.anyio
 async def test_response_diagnostics_is_safe_and_structured() -> None:
