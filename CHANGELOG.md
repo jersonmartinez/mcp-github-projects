@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **PR mutation response validation**: `create_pull_request` and `update_pull_request` now reject provider responses missing the PR number or canonical URL instead of returning a misleading success envelope; troubleshooting documents safe reconciliation before retrying.
+
 ## [1.4.0] - 2026-10-08
 
 ### Added

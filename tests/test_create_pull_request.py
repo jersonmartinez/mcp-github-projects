@@ -122,6 +122,23 @@ async def test_create_pull_request_links_issue() -> None:
 
 
 @pytest.mark.anyio
+async def test_create_pull_request_incomplete_provider_response_is_error() -> None:
+    """A successful HTTP call without PR identifiers must not be reported as success."""
+    run_mock = AsyncMock(return_value=_cmd_result(json.dumps({"state": "open"})))
+
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
+        result = await create_pull_request(
+            CreatePullRequestInput(title="Incomplete response", head="feat/incomplete")
+        )
+
+    assert result["ok"] is False
+    assert result["error_type"] == "internal"
+    assert "incomplete response" in result["message"]
+    assert "retry" in result["suggestion"].lower()
+
+
+@pytest.mark.anyio
 async def test_create_pull_request_cli_error() -> None:
     """A gh CLI failure is mapped to an internal error envelope."""
     run_mock = AsyncMock(
