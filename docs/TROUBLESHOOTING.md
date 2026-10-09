@@ -236,3 +236,22 @@ Assignees are applied **after** the issue exists, as a separate best-effort step
 ## Org-level projects still need a repository
 
 `GH_PROJECT_REPO_NAME` remains required even for an organization-owned Project V2 because issue creation, labels, milestones, assignees, and issue/PR-to-project linking use a repository. Set it to the repository that owns the work items; `GH_PROJECT_ORG_NAME` and `GH_PROJECT_PROJECT_NUMBER` identify the organization project itself.
+
+## Incomplete pull-request mutation response
+
+**Symptom:** `create_pull_request` or `update_pull_request` returns an
+`internal` error stating that GitHub returned an incomplete response.
+
+**Cause:** GitHub or an intermediary returned a successful transport response
+without the pull-request `number` or canonical `html_url`. The mutation may
+still have been applied, so treating the response as success would lose the
+identifier needed for reconciliation.
+
+**Resolution:**
+1. Do not retry the mutation immediately.
+2. Use `list_pull_requests` or `get_pull_request_detail` to check whether the
+   PR exists and identify its number and URL.
+3. If the PR exists, continue with `update_pull_request` or `commit_files` on
+   the existing head branch using the observed branch head SHA when available.
+4. If it does not exist, retry only after confirming that the provider did not
+   apply the original mutation.

@@ -158,6 +158,23 @@ async def test_update_pull_request_cli_error() -> None:
     assert result["error_type"] == "internal"
 
 
+@pytest.mark.anyio
+async def test_update_pull_request_incomplete_provider_response_is_error() -> None:
+    """A PATCH response without the PR number or URL must not be a false success."""
+    run_mock = AsyncMock(return_value=_cmd_result(json.dumps({"title": "Changed"})))
+
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
+        result = await update_pull_request(
+            UpdatePullRequestInput(pull_number=238, title="Changed")
+        )
+
+    assert result["ok"] is False
+    assert result["error_type"] == "internal"
+    assert "incomplete response" in result["message"]
+    assert "retry" in result["suggestion"].lower()
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

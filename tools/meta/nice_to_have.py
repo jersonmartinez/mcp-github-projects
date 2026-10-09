@@ -113,6 +113,26 @@ class BulkAssignInput(BaseModel):
     milestone: Optional[str] = Field(default=None, description="Milestone title to set on all issues")
 
 
+def _validate_pull_request_response(payload: object, *, operation: str) -> dict:
+    """Require the identifiers needed to reconcile a PR mutation safely."""
+    if not isinstance(payload, dict):
+        raise ValueError(f"GitHub returned a non-object response while {operation} a pull request")
+
+    number = payload.get("number")
+    url = payload.get("html_url")
+    missing: list[str] = []
+    if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+        missing.append("number")
+    if not isinstance(url, str) or not url.strip():
+        missing.append("html_url")
+    if missing:
+        raise ValueError(
+            f"GitHub returned an incomplete response while {operation} a pull request; "
+            f"missing {', '.join(missing)}"
+        )
+    return payload
+
+
 async def get_project_stats() -> dict:
     """Get statistics for the GitHub Project board.
 
@@ -349,9 +369,11 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
             api_args.extend(["-f", f"body={params.body}"])
 
         create_result = await gh_client.run(api_args)
-        pr_data = json.loads(create_result.stdout)
-        pr_number = pr_data.get("number")
-        pr_url = pr_data.get("html_url", "")
+        pr_data = _validate_pull_request_response(
+            json.loads(create_result.stdout), operation="creating"
+        )
+        pr_number = pr_data["number"]
+        pr_url = pr_data["html_url"]
 
         data: dict = {
             "pr_number": pr_number,
@@ -387,6 +409,15 @@ async def create_pull_request(params: CreatePullRequestInput) -> dict:
 
         return ToolSuccess(data=data).model_dump()
 
+    except ValueError as exc:
+        return build_error_response(
+            error_type="internal",
+            message=str(exc),
+            suggestion=(
+                "Do not retry blindly: reconcile the PR with list_pull_requests or "
+                "get_pull_request_detail before repeating the mutation."
+            ),
+        )
     except CLIError as exc:
         logger.error("CLI error in create_pull_request: %s", exc)
         return build_error_response(
@@ -473,9 +504,11 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
             ])
 
         patch_result = await gh_client.run(api_args)
-        pr_data = json.loads(patch_result.stdout)
-        pr_number = pr_data.get("number", params.pull_number)
-        pr_url = pr_data.get("html_url", "")
+        pr_data = _validate_pull_request_response(
+            json.loads(patch_result.stdout), operation="updating"
+        )
+        pr_number = pr_data["number"]
+        pr_url = pr_data["html_url"]
 
         data: dict = {
             "pr_number": pr_number,
@@ -491,6 +524,15 @@ async def update_pull_request(params: UpdatePullRequestInput) -> dict:
 
         return ToolSuccess(data=data).model_dump()
 
+    except ValueError as exc:
+        return build_error_response(
+            error_type="internal",
+            message=str(exc),
+            suggestion=(
+                "Do not retry blindly: reconcile the PR with list_pull_requests or "
+                "get_pull_request_detail before repeating the mutation."
+            ),
+        )
     except CLIError as exc:
         logger.error("CLI error in update_pull_request: %s", exc)
         return build_error_response(
