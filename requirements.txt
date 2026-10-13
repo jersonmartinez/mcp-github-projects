@@ -1,4 +1,4 @@
 fastmcp==4.0.9
-pydantic==2.13.5
+pydantic==2.14.0
 pydantic-settings==2.15.0
 httpx==0.28.1
