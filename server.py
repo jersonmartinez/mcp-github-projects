@@ -40,13 +40,23 @@ from tools.issues.close import close_issue
 from tools.issues.comment_issue import comment_issue
 from tools.issues.attach_file import attach_file_to_issue
 from tools.issues.add_sub_issue import add_sub_issue
+from tools.issues.dependencies import (
+    add_issue_dependency,
+    list_issue_dependencies,
+    remove_issue_dependency,
+)
 from tools.issues.edit_issue import edit_issue
 from tools.issues.create_item import create_project_item
 from tools.discovery.discover import discover_ids
 from tools.fields.estimate import set_estimate
 from tools.discovery.list_items import list_project_items
 from tools.projects.update_fields import update_project_item_fields
-from tools.fields.milestones import create_milestone, close_milestone, list_milestones
+from tools.fields.milestones import (
+    create_milestone,
+    close_milestone,
+    list_milestones,
+    update_milestone,
+)
 from tools.fields.labels import create_label, list_labels
 from tools.bulk.bulk_operations import bulk_close_issues, search_issues
 from tools.issues.advanced_operations import (
@@ -209,10 +219,14 @@ _ALL_TOOLS: list = [
     comment_issue,
     attach_file_to_issue,
     add_sub_issue,
+    list_issue_dependencies,
+    add_issue_dependency,
+    remove_issue_dependency,
     edit_issue,
     create_milestone,
     close_milestone,
     list_milestones,
+    update_milestone,
     create_label,
     list_labels,
     bulk_close_issues,

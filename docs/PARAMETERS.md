@@ -212,6 +212,27 @@ Closes the underlying GitHub issue by issue number. Does not modify the project 
 
 ---
 
+## update_milestone
+
+Updates selected fields on an existing milestone through
+`PATCH /repos/{owner}/{repo}/milestones/{milestone_number}`. At least one
+update field is required; owner and repo are optional target overrides.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `milestone_number` | `int` | Required | — | Positive GitHub milestone number |
+| `title` | `string` | Optional | `null` | Replacement milestone title |
+| `description` | `string` | Optional | `null` | Replacement description; an empty string clears it |
+| `due_on` | `string` or `null` | Optional | `null` | `YYYY-MM-DD`, `null`, or empty string; null/empty removes the due date |
+| `state` | `string` | Optional | `null` | New state, either `open` or `closed` |
+| `owner` | `string` | Optional | configured owner | GitHub owner override; rejected outside the locked scope |
+| `repo` | `string` | Optional | configured repository | Repository override; rejected outside the locked scope |
+
+Only fields supplied by the caller are sent. The date form `YYYY-MM-DD` is
+normalized to `YYYY-MM-DDT00:00:00Z` for GitHub. The operation is idempotent.
+
+---
+
 ## server_info
 
 Diagnostics tool. Returns safe, credential-free server metadata: the effective
@@ -299,6 +320,46 @@ by exact title. Issues linked to it are unlinked but not deleted.
 | `confirm` | `bool` | Optional | `false` | Must be `true` to proceed; the deletion is permanent |
 
 Reversible alternative: `close_milestone` (keeps the milestone and its history).
+
+### list_issue_dependencies
+
+Lists real GitHub issue dependencies using the REST API. `direction` may be
+`blocked_by`, `blocking`, or `both` (the default). `owner` and `repo` are
+optional overrides and default to `GH_PROJECT_ORG_NAME` and
+`GH_PROJECT_REPO_NAME`; they are checked by the scope lock.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issue_number` | `int` | Required | — | Issue whose dependencies are listed |
+| `direction` | `string` | Optional | `both` | Relationship direction: `blocked_by`, `blocking`, or `both` |
+| `owner` | `string` | Optional | configured owner | Repository owner override |
+| `repo` | `string` | Optional | configured repository | Repository name override |
+
+### add_issue_dependency
+
+Adds a real dependency where `issue_number` is blocked by
+`blocked_by_issue_number`. The tool resolves the blocking issue's REST `id`
+(the API does not accept its issue number) and is idempotent.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issue_number` | `int` | Required | — | Issue that is blocked |
+| `blocked_by_issue_number` | `int` | Required | — | Issue that blocks it |
+| `owner` | `string` | Optional | configured owner | Repository owner override |
+| `repo` | `string` | Optional | configured repository | Repository name override |
+
+### remove_issue_dependency
+
+Removes the dependency where `issue_number` is blocked by
+`blocked_by_issue_number`. Removing an absent relationship succeeds without a
+change.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issue_number` | `int` | Required | — | Issue that is blocked |
+| `blocked_by_issue_number` | `int` | Required | — | Issue that blocks it |
+| `owner` | `string` | Optional | configured owner | Repository owner override |
+| `repo` | `string` | Optional | configured repository | Repository name override |
 
 ---
 
