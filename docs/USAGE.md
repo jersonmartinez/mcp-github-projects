@@ -471,13 +471,13 @@ fields.
 
 ```
 Input:  { "title": "Add reviewer metadata", "head": "feat/reviewer-metadata",
-          "base": "main", "body": "Closes #126", "link_to_issue": 126,
-          "reviewers": ["ffactib"], "labels": ["feature", "documentation"],
-          "assignees": ["jersonmartinez"],
-          "milestone": "PR Metadata and Reviewer Workflow",
+          "base": "main", "body": "Closes #42", "link_to_issue": 42,
+          "reviewers": ["octocat"], "labels": ["feature", "documentation"],
+          "assignees": ["octocat"],
+          "milestone": "Example Release",
           "add_to_project": true, "status": "In Progress",
           "priority": "High", "area": "tools", "work_type": "Feature",
-          "estimate": 8, "due_date": "2026-11-24",
+          "estimate": 8, "due_date": "2027-12-31",
           "apply_defaults": true }
 Output: { pr_number, pr_url, add_to_project_result?, metadata_results?,
           metadata_status?, link_result? }
@@ -506,9 +506,9 @@ requested changes; unrelated values are left untouched. `state`, when given,
 must be `open` or `closed`.
 
 ```
-Input:  { "pull_number": 238, "reviewers": ["ffactib"],
+Input:  { "pull_number": 42, "reviewers": ["octocat"],
           "labels": ["feature", "needs-review"], "status": "In Review",
-          "priority": "High", "due_date": "2026-11-24" }
+          "priority": "High", "due_date": "2027-12-31" }
 Output: { pr_number, pr_url, title, head, base, draft, state,
           updated_fields, metadata_results?, metadata_status?, message }
 ```

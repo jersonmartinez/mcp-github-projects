@@ -18,8 +18,8 @@ Each instance needs the correct owner, repository, project number, and owner
 type:
 
 ```dotenv
-GH_PROJECT_ORG_NAME=Factib
-GH_PROJECT_REPO_NAME=Factib
+GH_PROJECT_ORG_NAME=example-org
+GH_PROJECT_REPO_NAME=finance-app
 GH_PROJECT_PROJECT_NUMBER=1
 GH_PROJECT_OWNER_TYPE=organization
 GH_PROJECT_SCOPE_LOCK=true
@@ -43,40 +43,35 @@ Verify every server after registration:
 ## Devin
 
 On Windows, Devin's user-level MCP file is
-`%APPDATA%\devin\mcp_config.json` (this machine:
-`C:\Users\Jerson\AppData\Roaming\devin\mcp_config.json`). On macOS/Linux it is
+`%APPDATA%\devin\mcp_config.json`. On macOS/Linux it is
 `~/.config/devin/mcp_config.json`. The file maps unique names under
-`mcpServers` to stdio commands. The active local setup uses two separate,
-scope-locked entries:
+`mcpServers` to stdio commands. The following illustrative Windows config
+registers two separate, scope-locked targets; replace the example values with
+your own:
 
-- `factib-github` targets `Factib/Factib`, organization Project 1.
-- `mcp-github-projects` targets `jersonmartinez/mcp-github-projects`, user
-  Project 11, with the repository's `feat/` branch prefix.
-
-This is the two-entry shape in the current setup. The existing `.env` file
-supplies authentication and the Factib target; the `-e` values on the second
-entry override only that process's target:
+- `org-board` targets `example-org/finance-app`, organization Project 1.
+- `user-board` targets `example-user/finance-app`, user Project 2.
 
 ```json
 {
   "mcpServers": {
-    "factib-github": {
+    "org-board": {
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "--env-file", "C:/path/to/mcp-github-projects/.env",
+        "--env-file", "C:/secure/org-board/.env",
         "mcp-github-projects:latest", "python", "server.py"
       ],
       "transport": "stdio"
     },
-    "mcp-github-projects": {
+    "user-board": {
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "--env-file", "C:/path/to/mcp-github-projects/.env",
-        "-e", "GH_PROJECT_ORG_NAME=jersonmartinez",
-        "-e", "GH_PROJECT_REPO_NAME=mcp-github-projects",
-        "-e", "GH_PROJECT_PROJECT_NUMBER=11",
+        "--env-file", "C:/secure/user-board/.env",
+        "-e", "GH_PROJECT_ORG_NAME=example-user",
+        "-e", "GH_PROJECT_REPO_NAME=finance-app",
+        "-e", "GH_PROJECT_PROJECT_NUMBER=2",
         "-e", "GH_PROJECT_OWNER_TYPE=user",
         "-e", "GH_PROJECT_SCOPE_LOCK=true",
         "-e", "GH_PROJECT_WRITE_BRANCH_PREFIXES=feat/",
@@ -88,7 +83,8 @@ entry override only that process's target:
 }
 ```
 
-Keep the two entries under distinct keys in the same `mcpServers` object.
+Each env file contains its own target values and credentials. Keep the entries
+under distinct keys in the same `mcpServers` object.
 Changes to `%APPDATA%\devin\mcp_config.json` are user-local, not repository
 changes. See the [Devin MCP configuration
 guide](https://docs.devin.ai/cli/extensibility/mcp/configuration).
@@ -103,18 +99,18 @@ using a different name for each:
 ```json
 {
   "mcpServers": {
-    "factib-github": {
+    "org-board": {
       "command": "docker",
       "args": [
-        "run", "--rm", "-i", "--env-file", "/secure/factib/.env",
+        "run", "--rm", "-i", "--env-file", "/secure/org-board/.env",
         "mcp-github-projects:latest", "python", "server.py"
       ],
       "disabled": false
     },
-    "mcp-github-projects": {
+    "user-board": {
       "command": "docker",
       "args": [
-        "run", "--rm", "-i", "--env-file", "/secure/mcp/.env",
+        "run", "--rm", "-i", "--env-file", "/secure/user-board/.env",
         "mcp-github-projects:latest", "python", "server.py"
       ],
       "disabled": false
@@ -140,19 +136,19 @@ OpenCode's global config is `~/.config/opencode/opencode.json` or
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "servers": {
-      "factib-github": {
+      "org-board": {
         "type": "local",
         "command": [
           "docker", "run", "--rm", "-i",
-          "--env-file", "/secure/factib/.env",
+          "--env-file", "/secure/org-board/.env",
           "mcp-github-projects:latest", "python", "server.py"
         ]
       },
-      "mcp-github-projects": {
+      "user-board": {
         "type": "local",
         "command": [
           "docker", "run", "--rm", "-i",
-          "--env-file", "/secure/mcp/.env",
+          "--env-file", "/secure/user-board/.env",
           "mcp-github-projects:latest", "python", "server.py"
         ]
       }
@@ -171,12 +167,12 @@ For user-only servers, register each instance with a unique name and
 `--scope user`:
 
 ```sh
-claude mcp add --scope user factib-github -- \
-  docker run --rm -i --env-file /secure/factib/.env \
+claude mcp add --scope user org-board -- \
+  docker run --rm -i --env-file /secure/org-board/.env \
   mcp-github-projects:latest python server.py
 
-claude mcp add --scope user mcp-github-projects -- \
-  docker run --rm -i --env-file /secure/mcp/.env \
+claude mcp add --scope user user-board -- \
+  docker run --rm -i --env-file /secure/user-board/.env \
   mcp-github-projects:latest python server.py
 claude mcp list
 ```
