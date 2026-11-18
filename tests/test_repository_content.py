@@ -164,7 +164,7 @@ async def test_merged_pull_requests_are_ordered_by_merge_date() -> None:
         {"number": 2, "title": "new", "state": "closed", "pull_request": {"merged_at": "2026-03-01T00:00:00Z"}},
         {"number": 3, "title": "mid", "state": "closed", "pull_request": {"merged_at": "2026-02-01T00:00:00Z"}},
     ]
-    gh = FakeGH({"search/issues": {"total_count": 3, "items": items})
+    gh = FakeGH({"search/issues": {"total_count": 3, "items": items}})
     with use_service_factory(gh_client=gh):
         result = await list_pull_requests(ListPullRequestsInput(state="merged", per_page=2))
     assert [p["number"] for p in result["data"]["pull_requests"]] == [2, 3]
@@ -232,7 +232,7 @@ async def test_commit_allows_exactly_allowlisted_workflow_file(monkeypatch: pyte
     monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
     monkeypatch.setenv(
         "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
-        ".github/workflows/pipeline-aws-deploy.yaml",
+        ".github/workflows/example-deploy.yml",
     )
     get_settings.cache_clear()
     gql = FakeGraphQL()
@@ -243,14 +243,14 @@ async def test_commit_allows_exactly_allowlisted_workflow_file(monkeypatch: pyte
     with use_service_factory(gh_client=gh, graphql_client=gql):
         result = await commit_files(CommitFilesInput(
             branch="chatbot/x",
-            message="ci(workflows): update the approved deploy workflow",
+            message="ci(workflows): update the approved example workflow",
             files=[FileChange(
-                path=".github/workflows/pipeline-aws-deploy.yaml",
+                path=".github/workflows/example-deploy.yml",
                 content="name: deploy\n",
             )],
         ))
     assert result["ok"] is True
-    assert result["data"]["changed"] == [".github/workflows/pipeline-aws-deploy.yaml"]
+    assert result["data"]["changed"] == [".github/workflows/example-deploy.yml"]
     assert gql.calls
 
 
@@ -266,7 +266,7 @@ async def test_commit_denies_unlisted_github_paths_even_with_workflow_allowlist(
     monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
     monkeypatch.setenv(
         "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
-        ".github/workflows/pipeline-aws-deploy.yaml",
+        ".github/workflows/example-deploy.yml",
     )
     get_settings.cache_clear()
     gql = FakeGraphQL()
