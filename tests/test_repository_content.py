@@ -47,6 +47,7 @@ def configured_target(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GH_PROJECT_PROJECT_NUMBER", "7")
     monkeypatch.setenv("GH_PROJECT_WRITE_BRANCH_PREFIXES", "docs/architecture/adr-,chatbot/")
     monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/")
+    monkeypatch.setenv("GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -163,7 +164,7 @@ async def test_merged_pull_requests_are_ordered_by_merge_date() -> None:
         {"number": 2, "title": "new", "state": "closed", "pull_request": {"merged_at": "2026-03-01T00:00:00Z"}},
         {"number": 3, "title": "mid", "state": "closed", "pull_request": {"merged_at": "2026-02-01T00:00:00Z"}},
     ]
-    gh = FakeGH({"search/issues": {"total_count": 3, "items": items}})
+    gh = FakeGH({"search/issues": {"total_count": 3, "items": items})
     with use_service_factory(gh_client=gh):
         result = await list_pull_requests(ListPullRequestsInput(state="merged", per_page=2))
     assert [p["number"] for p in result["data"]["pull_requests"]] == [2, 3]
@@ -222,6 +223,59 @@ async def test_commit_refuses_forbidden_paths(path: str) -> None:
     gql = FakeGraphQL()
     with use_service_factory(gh_client=FakeGH(REPO_META), graphql_client=gql):
         result = await commit_files(CommitFilesInput(branch="chatbot/x", message="docs: x", files=[FileChange(path=path, content="x")]))
+    assert result["ok"] is False
+    assert gql.calls == []
+
+
+@pytest.mark.anyio
+async def test_commit_allows_exactly_allowlisted_workflow_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
+    monkeypatch.setenv(
+        "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
+        ".github/workflows/pipeline-aws-deploy.yaml",
+    )
+    get_settings.cache_clear()
+    gql = FakeGraphQL()
+    gh = FakeGH({
+        **REPO_META,
+        f"{REPO}/git/ref/heads/chatbot/x": {"object": {"sha": "b" * 40}},
+    })
+    with use_service_factory(gh_client=gh, graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch="chatbot/x",
+            message="ci(workflows): update the approved deploy workflow",
+            files=[FileChange(
+                path=".github/workflows/pipeline-aws-deploy.yaml",
+                content="name: deploy\n",
+            )],
+        ))
+    assert result["ok"] is True
+    assert result["data"]["changed"] == [".github/workflows/pipeline-aws-deploy.yaml"]
+    assert gql.calls
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("path", [
+    ".github/workflows/unlisted.yaml",
+    ".github/actions/custom/action.yaml",
+])
+async def test_commit_denies_unlisted_github_paths_even_with_workflow_allowlist(
+    path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
+    monkeypatch.setenv(
+        "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
+        ".github/workflows/pipeline-aws-deploy.yaml",
+    )
+    get_settings.cache_clear()
+    gql = FakeGraphQL()
+    with use_service_factory(gh_client=FakeGH(REPO_META), graphql_client=gql):
+        result = await commit_files(CommitFilesInput(
+            branch="chatbot/x",
+            message="ci(workflows): test restricted path",
+            files=[FileChange(path=path, content="x")],
+        ))
     assert result["ok"] is False
     assert gql.calls == []
 
