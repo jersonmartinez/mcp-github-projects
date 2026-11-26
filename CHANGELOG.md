@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-11-26
+
+### 🐛 Bug Fixes
+
+- **Resolve items by number beyond GH_PROJECT_MAX_ITEMS** by @Jerson-Martinez-JEM0925 in [#174](https://github.com/jersonmartinez/mcp-github-projects/pull/174).
+
+### 📦 Release data
+
+- **Version:** `v1.6.2` (`patch` bump from `v1.6.1` — corrected behavior).
+- **Compatibility:** ✅ backwards-compatible fix or maintenance release.
+- **Source:** pull request [#174](https://github.com/jersonmartinez/mcp-github-projects/pull/174); merge commit `a7cd678a0131`.
+- **Compare:** [`v1.6.1...v1.6.2`](https://github.com/jersonmartinez/mcp-github-projects/compare/v1.6.1...v1.6.2).
+- **Container image:** `ghcr.io/jersonmartinez/mcp-github-projects:1.6.2` (also `ghcr.io/jersonmartinez/mcp-github-projects:1.6` and `ghcr.io/jersonmartinez/mcp-github-projects:latest`).
+- **Upgrade:** `docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.6.2`.
+
 ## [1.6.1] - 2026-11-26
 
 ### 📚 Documentation
