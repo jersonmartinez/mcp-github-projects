@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-26
+
+### 📚 Documentation
+
+- **Clarify multiline PR body input semantics** by @jersonmartinez in [#175](https://github.com/jersonmartinez/mcp-github-projects/pull/175).
+
+### 📦 Release data
+
+- **Version:** `v1.6.1` (`patch` bump from `v1.6.0` — documentation update).
+- **Compatibility:** ✅ backwards-compatible fix or maintenance release.
+- **Source:** pull request [#175](https://github.com/jersonmartinez/mcp-github-projects/pull/175); merge commit `527b2c40a3d7`.
+- **Compare:** [`v1.6.0...v1.6.1`](https://github.com/jersonmartinez/mcp-github-projects/compare/v1.6.0...v1.6.1).
+- **Container image:** `ghcr.io/jersonmartinez/mcp-github-projects:1.6.1` (also `ghcr.io/jersonmartinez/mcp-github-projects:1.6` and `ghcr.io/jersonmartinez/mcp-github-projects:latest`).
+- **Upgrade:** `docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.6.1`.
+
 ## [1.6.0] - 2026-11-26
 
 ### 🚀 Features
