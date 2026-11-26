@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-26
+
+### 🚀 Features
+
+- **Add safe workflow automation and lifecycle control** by @jersonmartinez in [#177](https://github.com/jersonmartinez/mcp-github-projects/pull/177).
+
 ### Added
 
 - Safe execution upgrades for project automation: `validate_project_field_values`,
@@ -27,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starting a partially planned mutation.
 - The generated tool catalog now covers 188 tools, including explicit MCP
   read/write/destructive annotations for client-side safety UX.
+
+### 📦 Release data
+
+- **Version:** `v1.7.0` (`minor` bump from `v1.6.2` — new user-facing capability).
+- **Compatibility:** ✅ backwards-compatible feature release.
+- **Source:** pull request [#177](https://github.com/jersonmartinez/mcp-github-projects/pull/177); merge commit `c9f5e58ffc91`.
+- **Scope:** includes curated changes that were accumulated under `[Unreleased]` before automation.
+- **Compare:** [`v1.6.2...v1.7.0`](https://github.com/jersonmartinez/mcp-github-projects/compare/v1.6.2...v1.7.0).
+- **Container image:** `ghcr.io/jersonmartinez/mcp-github-projects:1.7.0` (also `ghcr.io/jersonmartinez/mcp-github-projects:1.7` and `ghcr.io/jersonmartinez/mcp-github-projects:latest`).
+- **Upgrade:** `docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.7.0`.
 
 ## [1.6.2] - 2026-11-26
 
