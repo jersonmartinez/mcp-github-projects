@@ -399,7 +399,9 @@ class TestStableToolSchemas:
         # release/deployment/artifact/environment/cancel tools, plus compact
         # tool discovery and operational metrics. The digest is
         # updated together with the documented protocol change.
-        assert digest == "e557971114269273118dd5058c2d72d7a7cc63f3c1682dec4fe1e5dfb4f1437b", (
+        # Rebaselined for clearer create/update PR body descriptions. This is
+        # descriptive metadata only; body payloads remain pass-through strings.
+        assert digest == "fc439318d60f688db9ad07dbe1fe72da6514d45ece9e54b2ab306f2311fcc7a5", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

@@ -158,7 +158,13 @@ class CreatePullRequestInput(PullRequestMetadataInput):
         default="main",
         description="Branch to merge the changes into (default: main)",
     )
-    body: Optional[str] = Field(default=None, description="Pull request body / description")
+    body: Optional[str] = Field(
+        default=None,
+        description=(
+            "Markdown PR description; actual newline characters are preserved, "
+            "and literal backslash-n text is not decoded."
+        ),
+    )
     draft: bool = Field(
         default=False,
         description="Open the pull request as a draft (default: false)",
@@ -194,7 +200,10 @@ class UpdatePullRequestInput(PullRequestMetadataInput):
     )
     body: Optional[str] = Field(
         default=None,
-        description="New pull request body / description (supports multiline)",
+        description=(
+            "New Markdown body; actual newline characters are preserved, "
+            "and literal backslash-n text is not decoded."
+        ),
         max_length=65536,
     )
     base: Optional[str] = Field(

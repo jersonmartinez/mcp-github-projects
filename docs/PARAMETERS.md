@@ -400,7 +400,7 @@ scope-locked Project V2 board. Metadata mutations are reported individually;
 | `title` | `string` | Required | — | Pull request title |
 | `head` | `string` | Required | — | Head branch |
 | `base` | `string` | Optional | `main` | Base branch |
-| `body` | `string` | Optional | `null` | Pull request description |
+| `body` | `string` | Optional | `null` | Markdown description; actual newline characters are preserved, literal backslash-n text is not decoded |
 | `draft` | `bool` | Optional | `false` | Create a draft pull request |
 | `link_to_issue` | `int` | Optional | `null` | Issue to link to the pull request |
 | `reviewers` | `list[string]` | Optional | `null` | GitHub usernames to request for review; cannot include the PR author |
@@ -429,7 +429,7 @@ field or metadata operation must be provided.
 |-----------|------|----------|---------|-------------|
 | `pull_number` | `int` | Required | — | Pull request number |
 | `title` | `string` | Optional | `null` | New title |
-| `body` | `string` | Optional | `null` | New body |
+| `body` | `string` | Optional | `null` | New Markdown body; actual newline characters are preserved, literal backslash-n text is not decoded |
 | `base` | `string` | Optional | `null` | New base branch |
 | `state` | `string` | Optional | `null` | `open` or `closed` |
 | `maintainer_can_modify` | `bool` | Optional | `null` | Allow maintainers to update the head branch |
