@@ -46,8 +46,12 @@ class BulkCloseIssuesInput(_RepoTarget):
     )
     comment: Optional[str] = Field(default=None, description="Optional comment to add before closing each issue")
     dry_run: bool = Field(
+        default=True,
+        description="Preview the operations without commenting or closing any issue (default true).",
+    )
+    confirm: bool = Field(
         default=False,
-        description="Preview the operations without commenting or closing any issue",
+        description="Required true together with dry_run=false because closing many issues is high-impact.",
     )
 
 
@@ -83,6 +87,13 @@ async def bulk_close_issues(params: BulkCloseIssuesInput) -> dict:
         await get_service_factory().ensure_auth()
         repo = resolve_repository(params.owner, params.repo)
         gh_client = get_service_factory().gh()
+
+        if not params.dry_run and not params.confirm:
+            return build_error_response(
+                error_type="validation",
+                message="bulk_close_issues is high-impact; pass dry_run=false and confirm=true to close issues.",
+                suggestion="Review the dry-run plan first, then explicitly confirm the same bounded batch.",
+            )
 
         if params.dry_run:
             return ToolSuccess(

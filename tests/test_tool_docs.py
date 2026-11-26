@@ -142,7 +142,9 @@ def _arguments(tool) -> dict:
     defs = schema.get("$defs", {})
     props = schema.get("properties", {})
     arguments = {name: _sample(props[name], defs) for name in schema.get("required", [])}
-    if tool.name == "dispatch_workflow":
+    if tool.name == "validate_project_field_values":
+        arguments.update(fields={"Priority": "High"})
+    elif tool.name == "dispatch_workflow":
         arguments.update(workflow="ci.yaml", ref="main")
     elif tool.name == "merge_pull_request":
         arguments.update(expected_head_sha="a" * 40, merge_method="squash")

@@ -484,6 +484,68 @@ identity and bounded by their permissions and the repository's review rules
 `event=comment` or `event=request_changes` returns a validation error
 before any GitHub call.
 
+## Safe bulk, import, workflow, release, and deployment additions
+
+### validate_project_field_values
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `fields` | `object` | Required | — | 1–25 friendly field/value pairs; select option names, `YYYY-MM-DD` dates, numbers, or text |
+| `project_number` | `int` | Optional | configured board | Project V2 board selector |
+
+Returns canonical field metadata and exact mutation payloads without writing.
+
+### list_project_workflows / delete_project_workflow
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `project_number` | `int` | Optional | configured board | Project V2 board selector |
+| `limit` | `int` | Optional | `50` | Maximum native workflows returned (1–100) |
+| `workflow_id` | `string` | delete only | — | Workflow node id returned by `list_project_workflows`; never guess it |
+| `confirm` | `bool` | delete only | `false` | Must be `true`; deletion is permanent and cannot be recreated through the public API |
+
+GitHub does not expose public create/edit/enable/disable mutations for native
+Projects V2 workflow rules.
+
+### Executable bulk helpers
+
+`project_bulk_status_by_filter`, `project_bulk_priority_by_filter`, and
+`project_bulk_due_date_by_filter` share these parameters in addition to their
+filters:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `target_value` | `string` | apply only | `null` | New Status/Priority/date value to apply |
+| `dry_run` | `bool` | Optional | `true` | Preview selected items and validate without writing |
+| `confirm` | `bool` | apply only | `false` | Required with `dry_run=false` |
+| `limit` | `int` | Optional | `100` | Maximum board items scanned (1–100) |
+| `project_number` | `int` | Optional | configured board | Project V2 board selector |
+
+### project_import_markdown
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `text` | `string` | Required | — | Markdown table with a title/título column; optional status, priority, due date and body columns |
+| `dry_run` | `bool` | Optional | `true` | Validate all rows before writing |
+| `confirm` | `bool` | apply only | `false` | Required with `dry_run=false` |
+| `project_number` | `int` | Optional | configured board | Project V2 board selector |
+
+At most 50 rows are accepted. All rows are validated before the first issue is
+created; per-row outcomes are returned.
+
+### Release lifecycle additions
+
+| Tool | Required parameters | Safety notes |
+|------|---------------------|--------------|
+| `update_release` | `release_id` plus at least one of `tag_name`, `name`, `body`, `draft`, `prerelease` | Refuses empty updates |
+| `list_release_assets` | `release_id` | Read-only metadata; no binary download |
+| `upload_release_asset` | `release_id`, `name`, `content_base64` | Decoded content must be 1 byte–50 MiB; server never reads a client path |
+| `delete_release_asset` | `release_id`, `asset_id`, `confirm=true` | Permanent-delete tier; verifies asset belongs to the release first |
+| `create_deployment_status` | `deployment_id`, `state` | State must be a GitHub deployment status such as `success`, `failure`, or `in_progress` |
+
+All repository-scoped CI tools accept optional `owner`/`repo` overrides subject
+to the configured scope lock.
+
 ## Global Configuration
 
 These values apply across all tools and are configured at the server level.

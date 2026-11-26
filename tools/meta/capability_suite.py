@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from core.protocols import GHCLIRunner
 from core.config import get_settings
-from core.error_handling import handle_tool_error
+from core.error_handling import build_error_response, handle_tool_error
 from core.hardening import bounded_text, normalize_unique, parse_json_array, parse_json_items, parse_json_object
 from models.responses import ToolSuccess
 from core.factory import get_service_factory
@@ -40,7 +40,10 @@ class IssueCommentInput(BaseModel):
 
 
 class MarkdownInput(BaseModel):
-    text: str = Field(min_length=1, max_length=65_536)
+    text: str = Field(min_length=1, max_length=65_536, description="Markdown table to validate or import.")
+    dry_run: bool = Field(default=True, description="Validate and preview rows without creating issues/items (default true).")
+    confirm: bool = Field(default=False, description="Required true together with dry_run=false when importing rows.")
+    project_number: int | None = Field(default=None, gt=0, le=100_000, description="Project V2 board number; defaults to the configured board.")
 
 
 class CriteriaInput(BaseModel):
@@ -79,9 +82,12 @@ class ProjectReportInput(BaseModel):
 
 
 class ProjectFilterInput(BaseModel):
-    status: str | None = Field(default=None, max_length=100)
+    status: str | None = Field(default=None, max_length=100, description="Current Status filter used to select matching items.")
     assignee: str | None = Field(default=None, max_length=100)
     label: str | None = Field(default=None, max_length=100)
+    target_value: str | None = Field(default=None, max_length=100, description="New Status/Priority/date value to apply; required when dry_run=false.")
+    dry_run: bool = Field(default=True, description="Preview matching items without mutating (default true).")
+    confirm: bool = Field(default=False, description="Required true together with dry_run=false for bulk writes.")
     limit: int = Field(default=100, ge=1, le=100)
     project_number: int | None = Field(default=None, gt=0, le=100_000)
 
@@ -474,6 +480,41 @@ async def project_cycle_time(params: ProjectReportInput) -> dict:
     return _success({"issues": durations, "average_days": average})
 
 
+@_guard("Project flow metrics failed")
+async def project_flow_metrics(params: ProjectReportInput) -> dict:
+    """Aggregate board flow statistics useful for delivery automation decisions."""
+    client = await _client(params.project_number)
+    items = await _project_items(client, params.limit, params.project_number)
+    status_counts = Counter(str(item.get("status") or "Unknown") for item in items)
+    priority_counts = Counter(str(item.get("priority") or "Unknown") for item in items)
+    now = datetime.now(timezone.utc).date().isoformat()
+    done_names = {"done", "✅ done", "completed", "closed"}
+    def is_done(item: dict[str, Any]) -> bool:
+        return str(item.get("status") or "").casefold() in done_names
+    overdue = [item for item in items if not is_done(item) and item.get("dueDate") and str(item.get("dueDate")) < now]
+    unassigned = [item for item in items if not item.get("assignees")]
+    missing_fields = [item for item in items if not item.get("status") or not item.get("priority")]
+    cycle = await project_cycle_time(params)
+    cycle_data = cycle.get("data", {}) if cycle.get("ok") else {}
+    completed = sum(1 for item in items if is_done(item))
+    active = len(items) - completed
+    return _success({
+        "total_items": len(items),
+        "completed_items": completed,
+        "active_items": active,
+        "completion_rate_pct": round(completed / max(len(items), 1) * 100, 2),
+        "status_distribution": dict(status_counts),
+        "priority_distribution": dict(priority_counts),
+        "overdue_count": len(overdue),
+        "unassigned_count": len(unassigned),
+        "missing_required_fields_count": len(missing_fields),
+        "average_cycle_time_days": cycle_data.get("average_days"),
+        "cycle_time_sample_size": len(cycle_data.get("issues", [])),
+        "as_of": now,
+        "notes": ["GitHub Projects does not expose native workflow execution counts; these statistics are derived from current board and issue state."],
+    })
+
+
 @_guard("Project orphan items failed")
 async def project_orphan_items(params: ProjectReportInput) -> dict:
     items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
@@ -518,25 +559,95 @@ async def project_set_default_priority(params: ValueInput) -> dict:
     return _success({"dry_run": True, "priority": params.value, "message": "Default priority plan generated; no items were mutated."})
 
 
-@_guard("Project bulk status plan failed")
+def _value_tokens(value: Any) -> set[str]:
+    """Normalize assignee/label projections that may be strings or object lists."""
+    if value is None:
+        return set()
+    raw_values: list[Any]
+    if isinstance(value, list):
+        raw_values = value
+    elif isinstance(value, str):
+        raw_values = [part.strip() for part in value.split(",")]
+    else:
+        raw_values = [value]
+    tokens: set[str] = set()
+    for item in raw_values:
+        if isinstance(item, dict):
+            text = str(item.get("login") or item.get("name") or "")
+        else:
+            text = str(item)
+        if text.strip():
+            tokens.add(text.strip().casefold())
+    return tokens
+
+
+def _matches_project_filter(item: dict[str, Any], params: ProjectFilterInput) -> bool:
+    """Return true when all supplied board filters match one projected item."""
+    if params.status and str(item.get("status") or "").casefold() != params.status.casefold():
+        return False
+    if params.assignee and params.assignee.casefold() not in _value_tokens(item.get("assignees")):
+        return False
+    if params.label and params.label.casefold() not in _value_tokens(item.get("labels")):
+        return False
+    return True
+
+
+async def _apply_project_bulk_field(params: ProjectFilterInput, field_name: str, requested_key: str) -> dict:
+    """Plan or apply one validated field value to items selected by filters."""
+    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
+    selected = [item for item in items if _matches_project_filter(item, params)]
+    target = params.target_value
+    plan = {
+        "dry_run": True,
+        "selected": selected,
+        "count": len(selected),
+        "field": field_name,
+        requested_key: target,
+        "message": "Plan only; pass dry_run=false, confirm=true, and target_value to apply.",
+    }
+    if params.dry_run:
+        return _success(plan)
+    if not params.confirm or not target:
+        return build_error_response(
+            error_type="validation",
+            message="Bulk project writes require dry_run=false, confirm=true, and target_value.",
+            suggestion="Review the dry-run plan first, then explicitly confirm the exact target value.",
+        )
+    context = project_context(params.project_number)
+    factory = get_service_factory()
+    graphql = await factory.graphql()
+    discovery = await factory.discovery_service(graphql, context=context)
+    project_service = await factory.project_service(graphql, factory.gh(context=context), context=context)
+    metadata = await discovery.get_cached_or_discover()
+    project_service.plan_field_value(metadata, field_name, target)
+    results: list[dict[str, Any]] = []
+    for item in selected:
+        item_id = str(item.get("id") or "")
+        if not item_id:
+            results.append({"item": item, "status": "failed", "error": "missing project item id"})
+            continue
+        try:
+            await project_service.update_field(metadata=metadata, item_id=item_id, field_name=field_name, value=target)
+            results.append({"item_id": item_id, "title": item.get("title"), "status": "applied"})
+        except Exception as exc:
+            results.append({"item_id": item_id, "title": item.get("title"), "status": "failed", "error": str(exc)})
+    applied = sum(1 for row in results if row["status"] == "applied")
+    return _success({"dry_run": False, "field": field_name, "target_value": target, "results": results, "total": len(results), "applied": applied, "failed": len(results) - applied})
+
+
+@_guard("Project bulk status update failed")
 async def project_bulk_status_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
-    selected = [item for item in items if not params.status or item.get("status") == params.status]
-    return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_status": params.status})
+    return await _apply_project_bulk_field(params, "Status", "requested_status")
 
 
-@_guard("Project bulk priority plan failed")
+@_guard("Project bulk priority update failed")
 async def project_bulk_priority_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
-    selected = [item for item in items if not params.status or item.get("status") == params.status]
-    return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_priority": params.label})
+    return await _apply_project_bulk_field(params, "Priority", "requested_priority")
 
 
-@_guard("Project bulk due-date plan failed")
+@_guard("Project bulk due-date update failed")
 async def project_bulk_due_date_by_filter(params: ProjectFilterInput) -> dict:
-    items = await _project_items(await _client(params.project_number), params.limit, params.project_number)
-    selected = [item for item in items if not params.status or item.get("status") == params.status]
-    return _success({"dry_run": True, "selected": selected, "count": len(selected), "requested_due_date": params.label})
+    return await _apply_project_bulk_field(params, "Due date", "requested_due_date")
 
 
 @_guard("Project export failed")
@@ -547,10 +658,138 @@ async def project_export_markdown(params: ProjectReportInput) -> dict:
     return _success({"markdown": markdown, "count": len(items)})
 
 
-@_guard("Project import validation failed")
+def _markdown_table_rows(text: str) -> tuple[list[str], list[list[str]]]:
+    lines = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
+    if len(lines) < 2 or "---" not in lines[1]:
+        return [], []
+    def cells(line: str) -> list[str]:
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]
+    headers = cells(lines[0])
+    rows = [cells(line) for line in lines[2:] if "---" not in line]
+    return headers, rows
+
+
+@_guard("Project import failed")
 async def project_import_markdown(params: MarkdownInput) -> dict:
-    rows = [line for line in params.text.splitlines() if line.startswith("|") and "---" not in line]
-    return _success({"valid": len(rows) >= 2, "row_count": max(len(rows) - 1, 0), "dry_run": True})
+    """Validate a Markdown table and optionally create project items atomically planned.
+
+    All rows are validated before the first write. Writes are sequential because
+    each row creates a repository issue and then adds it to the project; partial
+    outcomes are returned explicitly with the created issue number when present.
+    """
+    headers, raw_rows = _markdown_table_rows(params.text)
+    if not headers or not raw_rows:
+        return _success({"valid": False, "row_count": 0, "dry_run": True, "errors": ["expected a Markdown table with a header and separator row"]})
+    if len(raw_rows) > 50:
+        return _success({"valid": False, "row_count": len(raw_rows), "dry_run": True, "errors": ["imports are limited to 50 rows per call"]})
+    normalized = [re.sub(r"[^a-z0-9]+", "", header.lower()) for header in headers]
+    aliases = {
+        "title": {"title", "titulo", "título", "name", "issue"},
+        "status": {"status", "estado"},
+        "priority": {"priority", "prioridad"},
+        "due_date": {"duedate", "due", "fecha", "fechavencimiento"},
+        "body": {"body", "description", "descripcion", "descripción", "notes"},
+    }
+    positions: dict[str, int] = {}
+    for canonical, names in aliases.items():
+        for index, header in enumerate(normalized):
+            if header in names:
+                positions[canonical] = index
+                break
+    errors: list[str] = []
+    if "title" not in positions:
+        errors.append("missing required title/título column")
+    rows: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for index, cells in enumerate(raw_rows, start=1):
+        def value(name: str) -> str:
+            position = positions.get(name)
+            return cells[position].strip() if position is not None and position < len(cells) else ""
+        row = {
+            "row": index,
+            "title": value("title"),
+            "status": value("status") or None,
+            "priority": value("priority") or None,
+            "due_date": value("due_date") or None,
+            "body": value("body"),
+        }
+        if not row["title"]:
+            errors.append(f"row {index}: title is required")
+        elif row["title"].lower() in seen_titles:
+            errors.append(f"row {index}: duplicate title in import: {row['title']}")
+        elif len(row["title"]) > 256:
+            errors.append(f"row {index}: title exceeds 256 characters")
+        else:
+            seen_titles.add(row["title"].lower())
+        if row["due_date"]:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["due_date"]):
+                errors.append(f"row {index}: due_date must use YYYY-MM-DD")
+            else:
+                try:
+                    datetime.strptime(row["due_date"], "%Y-%m-%d")
+                except ValueError:
+                    errors.append(f"row {index}: due_date must be a real calendar date")
+        if len(row["body"]) > 65_536:
+            errors.append(f"row {index}: body exceeds 65536 characters")
+        rows.append(row)
+    valid = not errors
+    if params.dry_run or not valid:
+        return _success({"valid": valid, "row_count": len(rows), "rows": rows, "errors": errors, "dry_run": True, "message": "Validation complete; no issues or project items were created."})
+    if not params.confirm:
+        return build_error_response(
+            error_type="validation",
+            message="project_import_markdown requires confirm=true when dry_run=false.",
+            suggestion="Review the validated rows first; imports create real GitHub issues and project items.",
+        )
+
+    context = project_context(params.project_number)
+    factory = get_service_factory()
+    graphql = await factory.graphql()
+    discovery = await factory.discovery_service(graphql, context=context)
+    project_service = await factory.project_service(graphql, factory.gh(context=context), context=context)
+    metadata = await discovery.get_cached_or_discover()
+    field_errors: list[str] = []
+    for row in rows:
+        for field_name, row_key in (("Status", "status"), ("Priority", "priority"), ("Due date", "due_date")):
+            value = row.get(row_key)
+            if not value:
+                continue
+            try:
+                project_service.plan_field_value(metadata, field_name, value)
+            except Exception as exc:
+                field_errors.append(f"row {row['row']} {field_name}: {exc}")
+    if field_errors:
+        return _success({
+            "valid": False,
+            "row_count": len(rows),
+            "rows": rows,
+            "errors": field_errors,
+            "dry_run": True,
+            "message": "Board field validation failed; no issues or project items were created.",
+        })
+
+    from tools.issues.create_item import create_project_item
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            created = await create_project_item(
+                title=row["title"],
+                body=row["body"],
+                status=row["status"],
+                priority=row["priority"],
+                due_date=row["due_date"],
+                apply_defaults=False,
+                project_number=params.project_number,
+            )
+            if created.get("ok"):
+                results.append({"row": row["row"], "title": row["title"], "status": "created", "issue_number": created.get("data", {}).get("issue_number"), "item_id": created.get("data", {}).get("item_id")})
+            else:
+                results.append({"row": row["row"], "title": row["title"], "status": "failed", "error": created.get("message", "create_project_item failed")})
+        except Exception as exc:
+            results.append({"row": row["row"], "title": row["title"], "status": "failed", "error": str(exc)})
+    created_count = sum(1 for row in results if row["status"] == "created")
+    return _success({"valid": True, "dry_run": False, "results": results, "total": len(results), "created": created_count, "failed": len(results) - created_count})
 
 
 # ── Strategic automation and Markdown tools (41-60) ──────────────────────────
@@ -710,11 +949,11 @@ async def build_automation_decision(params: RiskInput) -> dict:
     return _success({"decisions": decisions, "markdown": "## Decisiones de automatización\n\n" + "\n".join(f"- **{item['risk']}**: {item['mitigation']}" for item in decisions)})
 
 
-# Exactly 62 public tools are registered by server.py.
+# Exactly 63 public tools are registered by server.py.
 CAPABILITY_TOOL_NAMES = [
-    "validate_issue_markdown", "format_issue_markdown", "add_issue_acceptance_criteria", "summarize_issue", "suggest_issue_labels", "suggest_issue_assignee", "normalize_issue_title", "detect_issue_duplicates", "find_stale_issues", "find_unassigned_issues", "find_missing_issue_metadata", "comment_issue_progress", "comment_issue_plan", "comment_issue_blocker", "comment_issue_resolution", "list_issue_comments", "search_issue_comments", "edit_issue_comment", "build_issue_template", "build_closure_comment", "build_dependency_comment", "build_issue_bundle", "project_health_report", "project_status_distribution", "project_priority_distribution", "project_assignee_load", "project_due_date_risk", "project_cycle_time", "project_orphan_items", "project_missing_fields", "project_field_options_report", "project_validate_board", "project_sync_issue_metadata", "project_set_default_status", "project_set_default_priority", "project_bulk_status_by_filter", "project_bulk_priority_by_filter", "project_bulk_due_date_by_filter", "project_export_markdown", "project_import_markdown", "plan_next_sprint", "prioritize_backlog", "generate_daily_plan", "generate_weekly_plan", "generate_risk_register", "generate_dependency_report", "generate_release_checklist", "generate_changelog_from_issues", "generate_project_brief", "generate_stakeholder_update", "detect_scope_creep", "detect_blocked_work", "recommend_wip_moves", "recommend_sprint_assignment", "auto_triage_issue", "build_status_update_comment", "build_sprint_retrospective", "build_roadmap_markdown", "build_issue_creation_bundle", "build_issue_review_checklist", "build_comment_digest", "build_automation_decision",
+    "validate_issue_markdown", "format_issue_markdown", "add_issue_acceptance_criteria", "summarize_issue", "suggest_issue_labels", "suggest_issue_assignee", "normalize_issue_title", "detect_issue_duplicates", "find_stale_issues", "find_unassigned_issues", "find_missing_issue_metadata", "comment_issue_progress", "comment_issue_plan", "comment_issue_blocker", "comment_issue_resolution", "list_issue_comments", "search_issue_comments", "edit_issue_comment", "build_issue_template", "build_closure_comment", "build_dependency_comment", "build_issue_bundle", "project_health_report", "project_status_distribution", "project_priority_distribution", "project_assignee_load", "project_due_date_risk", "project_cycle_time", "project_flow_metrics", "project_orphan_items", "project_missing_fields", "project_field_options_report", "project_validate_board", "project_sync_issue_metadata", "project_set_default_status", "project_set_default_priority", "project_bulk_status_by_filter", "project_bulk_priority_by_filter", "project_bulk_due_date_by_filter", "project_export_markdown", "project_import_markdown", "plan_next_sprint", "prioritize_backlog", "generate_daily_plan", "generate_weekly_plan", "generate_risk_register", "generate_dependency_report", "generate_release_checklist", "generate_changelog_from_issues", "generate_project_brief", "generate_stakeholder_update", "detect_scope_creep", "detect_blocked_work", "recommend_wip_moves", "recommend_sprint_assignment", "auto_triage_issue", "build_status_update_comment", "build_sprint_retrospective", "build_roadmap_markdown", "build_issue_creation_bundle", "build_issue_review_checklist", "build_comment_digest", "build_automation_decision",
 ]
-assert len(CAPABILITY_TOOL_NAMES) == 62
+assert len(CAPABILITY_TOOL_NAMES) == 63
 
 # One-line descriptions. These functions are defined compactly without
 # docstrings, so without this table MCP clients received an EMPTY description
@@ -751,6 +990,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "project_assignee_load": "Count board items per assignee.",
     "project_due_date_risk": "List board items past their due date that are not Done.",
     "project_cycle_time": "Average days from creation to close over recently closed issues.",
+    "project_flow_metrics": "Aggregate throughput, completion, WIP, overdue, unassigned, missing-field, and cycle-time statistics for a project.",
     "project_orphan_items": "List board items with neither linked content nor a title.",
     "project_missing_fields": "List board items missing Status or Priority.",
     "project_field_options_report": "Report the Status and Priority values observed on the board.",
@@ -758,11 +998,11 @@ _DESCRIPTIONS: dict[str, str] = {
     "project_sync_issue_metadata": "Plan (dry run) which open issues lack the given assignee or label; changes nothing.",
     "project_set_default_status": "Plan (dry run) a default Status; returns the plan only and changes nothing.",
     "project_set_default_priority": "Plan (dry run) a default Priority; returns the plan only and changes nothing.",
-    "project_bulk_status_by_filter": "Plan (dry run) a bulk Status change for items matching a filter; changes nothing.",
+    "project_bulk_status_by_filter": "Preview or apply a bulk Status change for items matching a filter; apply requires dry_run=false and confirm=true.",
     "project_bulk_priority_by_filter": "Plan (dry run) a bulk Priority change for items matching a filter; changes nothing.",
     "project_bulk_due_date_by_filter": "Plan (dry run) a bulk due-date change for items matching a filter; changes nothing.",
     "project_export_markdown": "Export board items as a Markdown table (ID, Título, Estado, Prioridad).",
-    "project_import_markdown": "Validate a Markdown table for import and count its rows (dry run); creates nothing.",
+    "project_import_markdown": "Validate a Markdown table and optionally import rows as project items; apply requires dry_run=false and confirm=true.",
     "plan_next_sprint": "List open issues, optionally only those in a milestone, as a next-sprint checklist.",
     "prioritize_backlog": "Rank open issues: Security label first, then Fix, then by issue number.",
     "generate_daily_plan": "Top five issues of the prioritized backlog as a daily plan.",

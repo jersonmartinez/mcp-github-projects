@@ -112,6 +112,8 @@ _ACCESS_OVERRIDES: dict[str, ToolAccess] = {
     "delete_issue_comment": ToolAccess.DELETE,
     "delete_label": ToolAccess.DELETE,
     "delete_milestone": ToolAccess.DELETE,
+    "delete_release_asset": ToolAccess.DELETE,
+    "delete_project_workflow": ToolAccess.DELETE,
     # Diagnostics tool — read-only, not in the capability map.
     "server_info": ToolAccess.READ,
 }
