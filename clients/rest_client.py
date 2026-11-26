@@ -81,6 +81,8 @@ class GitHubRESTClient:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         """Execute one REST request and return decoded JSON or text."""
         token = self._token
@@ -95,6 +97,8 @@ class GitHubRESTClient:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        if extra_headers:
+            headers.update(extra_headers)
         breaker = github_circuit_breaker(token)
         try:
             breaker.before_call()
@@ -106,6 +110,7 @@ class GitHubRESTClient:
                 path,
                 params=params,
                 json=json_body,
+                content=content,
                 headers=headers,
             )
         except httpx.TimeoutException as exc:

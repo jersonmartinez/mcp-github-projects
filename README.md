@@ -13,7 +13,7 @@ sprint/planning workflows. Built with **Python 3.12** and **FastMCP 4.x**, it
 speaks stdio JSON-RPC or optional stateless Streamable HTTP and runs entirely
 inside a **standalone Docker container** — no host toolchain required beyond Docker.
 
-The server exposes **179 tools at `MCP_ACCESS_LEVEL=full`**: operational
+The server exposes **188 tools at `MCP_ACCESS_LEVEL=full`**: operational
 primitives, CI/DevOps integration, repository/project quality reports, and
 higher-level planning capabilities. Role profiles can deliberately narrow that
 catalog for developers, DevOps operators, project managers, commenters, or
@@ -173,7 +173,7 @@ in the JSON.
 
 ## Tool Catalog
 
-The server registers **179 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROFILE=full` (fewer at lower access levels or narrower role profiles). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
+The server registers **188 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROFILE=full` (fewer at lower access levels or narrower role profiles). A category overview — the generated, per-tool catalog is [docs/TOOLS.md](docs/TOOLS.md):
 
 | Category | What it covers | Representative tools |
 |----------|----------------|----------------------|
@@ -185,7 +185,7 @@ The server registers **179 tools** at `MCP_ACCESS_LEVEL=full` and `MCP_TOOL_PROF
 | **Repository provisioning** | Create a user or organization repository with explicit visibility | `create_repository` |
 | **Planning & Workflows** | Sprints, standups, epics, triage, releases | `sprint_planning`, `create_epic`, `close_sprint`, `daily_standup`, `sprint_review`, `triage_new_issues`, `escalate_overdue`, `generate_release_notes`, `complete_issue` |
 | **PR ↔ Issue lifecycle** | Verify acceptance, link PRs, gate closures | `verify_acceptance_criteria`, `get_pr_linked_issues`, `validate_issue_closure_readiness`, `close_issue_on_pr_merge` |
-| **CI / GitHub Actions & releases** | Read PR checks, merge a ready PR, inspect/cancel/rerun workflows, manage artifacts, environments, deployments and releases | `get_pr_checks`, `merge_pull_request`, `cancel_workflow_run`, `list_workflow_artifacts`, `list_environments`, `create_deployment`, `create_release`, `dispatch_workflow` |
+| **CI / GitHub Actions & releases** | Read PR checks, merge a ready PR, inspect/cancel/rerun workflows, manage artifacts, environments, deployments, deployment statuses, releases, and release assets | `get_pr_checks`, `merge_pull_request`, `cancel_workflow_run`, `list_workflow_artifacts`, `list_environments`, `create_deployment`, `create_deployment_status`, `create_release`, `update_release`, `upload_release_asset`, `dispatch_workflow` |
 | **Metrics** | Board and sprint statistics | `get_project_stats`, `get_sprint_summary` |
 | **Diagnostics** | Report effective access level, scope lock, and target | `server_info` |
 | **Board structure** | Plan/apply Status (single-select) options without losing item values; list/create views | `set_field_options`, `list_project_views`, `create_project_view` |

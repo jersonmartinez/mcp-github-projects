@@ -166,11 +166,12 @@ cannot go stale. Two classification rules worth knowing:
 
 - A tool is **write** when it needs any `*.write` capability, **read**
   otherwise; permanent deletes are a separate **delete** tier (`full` only).
-- Plan-only helpers that return `"dry_run": true` and never mutate
-  (`project_set_default_*`, `project_bulk_*_by_filter`,
-  `project_sync_issue_metadata`, `project_import_markdown`,
-  `auto_triage_issue`) are **read** tools, so they stay available at
-  `MCP_ACCESS_LEVEL=read`.
+- Dry-run-first executable helpers (`project_bulk_*_by_filter` and
+  `project_import_markdown`) default to a non-mutating plan but can apply
+  changes only when `dry_run=false` and `confirm=true`; because execution is
+  possible, they are **write** tools. Truly plan-only helpers such as
+  `project_set_default_*`, `project_sync_issue_metadata`, and
+  `auto_triage_issue` remain read-only.
 
 ### Board structure (Status columns and views)
 
@@ -185,8 +186,16 @@ introspection on 2026-09-27. The server exposes them as:
 | `list_project_views` | read | — |
 | `create_project_view` | write | Creates a board/table/roadmap view, optionally with a filter. Views have no delete tool here. |
 
-Native workflows (built-in automations) are still not writable through the
-public API beyond `deleteProjectV2Workflow`, so they are not exposed.
+Native workflows (built-in automations) can be inspected with
+`list_project_workflows`. GitHub exposes no public mutation to create, edit,
+enable, or disable their rules. The only lifecycle mutation is
+`deleteProjectV2Workflow`; because a deleted workflow cannot be recreated
+through the API, `delete_project_workflow` is a permanent-delete tool exposed
+only at `MCP_ACCESS_LEVEL=full` and requires `confirm=true`. For executable
+automation, prefer the deterministic MCP workflows (`complete_issue`,
+`triage_new_issues`, `handoff_issue`, `close_sprint`, and related planning
+tools), which compose operations the API does support and keep dry-run or
+confirmation boundaries explicit.
 
 ---
 

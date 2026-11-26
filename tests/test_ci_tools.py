@@ -24,7 +24,11 @@ from tools.ci.actions import (  # noqa: E402
     CI_TOOLS,
     CancelWorkflowRunInput,
     CreateDeploymentInput,
+    CreateDeploymentStatusInput,
     CreateReleaseInput,
+    DeleteReleaseAssetInput,
+    ListReleaseAssetsInput,
+    UpdateReleaseInput,
     DispatchWorkflowInput,
     GetJobLogsInput,
     GetPrChecksInput,
@@ -39,13 +43,17 @@ from tools.ci.actions import (  # noqa: E402
     RerunWorkflowRunInput,
     cancel_workflow_run,
     create_deployment,
+    create_deployment_status,
     create_release,
+    delete_release_asset,
+    update_release,
     dispatch_workflow,
     get_job_logs,
     get_pr_checks,
     get_workflow_run,
     list_deployments,
     list_environments,
+    list_release_assets,
     list_releases,
     list_workflow_artifacts,
     list_workflow_runs,
@@ -105,10 +113,11 @@ async def _with(gh: RoutingGH, coro_fn, params):
 def test_read_tools_are_read_and_write_tools_are_write() -> None:
     reads = {
         "list_workflows", "list_workflow_runs", "get_workflow_run", "get_pr_checks", "get_job_logs",
-        "list_workflow_artifacts", "list_environments", "list_deployments", "list_releases",
+        "list_workflow_artifacts", "list_environments", "list_deployments", "list_releases", "list_release_assets",
     }
+    deletes = {"delete_release_asset"}
     for fn in CI_TOOLS:
-        expected = ToolAccess.READ if fn.__name__ in reads else ToolAccess.WRITE
+        expected = ToolAccess.READ if fn.__name__ in reads else ToolAccess.DELETE if fn.__name__ in deletes else ToolAccess.WRITE
         assert classify(fn.__name__) is expected, fn.__name__
     assert not is_exposed("dispatch_workflow", AccessLevel.READ)
     assert is_exposed("get_pr_checks", AccessLevel.READ)
@@ -409,3 +418,47 @@ async def test_cli_error_is_sanitized_and_typed() -> None:
     assert result["error_type"] == "not_found"
     assert "ghp_abcdefghij" not in result["message"]
     assert "Actions read" in result["suggestion"]
+
+
+@pytest.mark.anyio
+async def test_release_lifecycle_paths_and_confirmation() -> None:
+    gh = RoutingGH({
+        f"{REPO}/releases/10": {"id": 10, "tag_name": "v1.2.0", "name": "v1.2.0", "assets": []},
+        f"{REPO}/releases/10/assets": [{"id": 55, "name": "dist.tar.gz", "size": 12, "browser_download_url": "https://example.test/asset"}],
+    })
+    updated = await _with(gh, update_release, UpdateReleaseInput(release_id=10, name="v1.2.1", draft=False))
+    assets = await _with(gh, list_release_assets, ListReleaseAssetsInput(release_id=10))
+    refused = await _with(gh, delete_release_asset, DeleteReleaseAssetInput(release_id=10, asset_id=55, confirm=False))
+    deleted = await _with(gh, delete_release_asset, DeleteReleaseAssetInput(release_id=10, asset_id=55, confirm=True))
+    assert updated["ok"] is True
+    assert assets["data"]["assets"][0]["id"] == 55
+    assert refused["ok"] is False and "confirm=true" in refused["message"]
+    assert deleted["data"]["deleted"] is True
+    assert gh.calls[0][:3] == ["api", "--method", "PATCH"]
+    assert gh.calls[-1] == ["api", "--method", "DELETE", f"{REPO}/releases/assets/55"]
+
+
+@pytest.mark.anyio
+async def test_delete_release_asset_verifies_release_ownership() -> None:
+    gh = RoutingGH({f"{REPO}/releases/10/assets": [{"id": 56, "name": "other"}]})
+    result = await _with(gh, delete_release_asset, DeleteReleaseAssetInput(release_id=10, asset_id=55, confirm=True))
+    assert result["ok"] is False
+    assert "was not found on release" in result["message"]
+    assert not any("DELETE" in call for call in gh.calls)
+
+
+@pytest.mark.anyio
+async def test_create_deployment_status_encodes_optional_fields() -> None:
+    gh = RoutingGH({f"{REPO}/deployments/11/statuses": {"id": 99, "state": "success", "environment": "production"}})
+    result = await _with(gh, create_deployment_status, CreateDeploymentStatusInput(
+        deployment_id=11,
+        state="success",
+        environment="production",
+        description="done",
+        environment_url="https://example.test",
+        auto_inactive=True,
+    ))
+    assert result["data"]["status"]["id"] == 99
+    call = gh.calls[0]
+    assert call[:3] == ["api", "--method", "POST"]
+    assert "state=success" in call and "auto_inactive=true" in call and "environment_url=https://example.test" in call

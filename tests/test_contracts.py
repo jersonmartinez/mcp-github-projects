@@ -337,11 +337,11 @@ class TestCapabilitiesCoverage:
         )
 
     def test_capability_tool_names_list_matches(self) -> None:
-        """CAPABILITY_TOOL_NAMES list must contain exactly 62 entries."""
+        """CAPABILITY_TOOL_NAMES list must contain exactly 63 entries."""
         from tools.capability_suite import CAPABILITY_TOOL_NAMES
 
-        assert len(CAPABILITY_TOOL_NAMES) == 62, (
-            f"Expected 62 capability suite tools, got {len(CAPABILITY_TOOL_NAMES)}"
+        assert len(CAPABILITY_TOOL_NAMES) == 63, (
+            f"Expected 63 capability suite tools, got {len(CAPABILITY_TOOL_NAMES)}"
         )
 
     def test_capability_suite_functions_exist(self) -> None:
@@ -401,7 +401,9 @@ class TestStableToolSchemas:
         # updated together with the documented protocol change.
         # Rebaselined for clearer create/update PR body descriptions. This is
         # descriptive metadata only; body payloads remain pass-through strings.
-        assert digest == "fc439318d60f688db9ad07dbe1fe72da6514d45ece9e54b2ab306f2311fcc7a5", (
+        # Rebaselined again for workflow automation, release lifecycle, validation,
+        # prompt, and executable bulk/import tools added in this change.
+        assert digest == "145923087dddfdcab5f88bf594836272c35d6f15fb0dfd5ba06fcb9590cb0faa", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

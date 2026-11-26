@@ -406,7 +406,7 @@ class ProjectService:
             )
 
         # Construct the value payload based on field type.
-        field_value = self._build_field_value(field, value)
+        field_value = self.plan_field_value(metadata, field_name, value)[1]
 
         variables = {
             "projectId": metadata.project_id,
@@ -431,6 +431,26 @@ class ProjectService:
             item_id,
             value,
         )
+
+    def plan_field_value(
+        self,
+        metadata: ProjectMetadata,
+        field_name: str,
+        value: str | float,
+    ) -> tuple[ProjectField, dict]:
+        """Resolve and validate a friendly field value without mutating.
+
+        Returns the canonical field definition plus the exact GraphQL value
+        payload updateProjectV2ItemFieldValue would receive.
+        """
+        field = resolve_field(metadata, field_name)
+        if field is None:
+            valid_fields = list(metadata.fields.keys())
+            raise ValidationError(
+                f"Field '{field_name}' not found in project. "
+                f"Valid fields: {', '.join(valid_fields)}"
+            )
+        return field, self._build_field_value(field, value)
 
     async def archive_item(
         self,

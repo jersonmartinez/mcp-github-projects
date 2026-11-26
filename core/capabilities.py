@@ -101,23 +101,25 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
 
     # --- Project Board ---
     "update_project_item_fields": frozenset({PW}),
+    "validate_project_field_values": frozenset({PR}),
+    "list_project_workflows": frozenset({PR}),
+    "delete_project_workflow": frozenset({PR, PW}),
     "add_item_to_project": frozenset({PW}),
     "move_to_status": frozenset({PW}),
     "move_to_done": frozenset({PW}),
     "move_to_trash": frozenset({PW}),
     "archive_project_item": frozenset({PW}),
 
-    # --- Plan-only (dry run) board/issue helpers ---
-    # These return a plan with "dry_run": true and never mutate anything, so
-    # they only need read capabilities and are exposed at MCP_ACCESS_LEVEL=read
-    # (docs audit, issue #37). Apply a plan with the real write tools.
+    # --- Safe bulk and import helpers ---
+    # These are dry-run-first. Because they can mutate when explicitly confirmed,
+    # they require write capabilities even though the default call only plans.
     "project_sync_issue_metadata": frozenset({PR, IR}),
     "project_set_default_status": frozenset({PR}),
     "project_set_default_priority": frozenset({PR}),
-    "project_bulk_status_by_filter": frozenset({PR}),
-    "project_bulk_priority_by_filter": frozenset({PR}),
-    "project_bulk_due_date_by_filter": frozenset({PR}),
-    "project_import_markdown": frozenset(),
+    "project_bulk_status_by_filter": frozenset({PR, PW}),
+    "project_bulk_priority_by_filter": frozenset({PR, PW}),
+    "project_bulk_due_date_by_filter": frozenset({PR, PW}),
+    "project_import_markdown": frozenset({PR, PW, IW}),
 
     # --- Project Reports (Read-Only) ---
     "get_project_stats": frozenset({PR, IR}),
@@ -128,6 +130,7 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "project_assignee_load": frozenset({PR, IR}),
     "project_due_date_risk": frozenset({PR}),
     "project_cycle_time": frozenset({PR}),
+    "project_flow_metrics": frozenset({PR, IR}),
     "project_orphan_items": frozenset({PR}),
     "project_missing_fields": frozenset({PR}),
     "project_field_options_report": frozenset({PR}),
@@ -200,6 +203,11 @@ TOOL_CAPABILITIES: dict[str, FrozenSet[Capability]] = {
     "create_deployment": frozenset({AW}),
     "list_releases": frozenset({CTR}),
     "create_release": frozenset({CTW}),
+    "update_release": frozenset({CTW}),
+    "list_release_assets": frozenset({CTR}),
+    "upload_release_asset": frozenset({CTW}),
+    "delete_release_asset": frozenset({CTW}),
+    "create_deployment_status": frozenset({AW}),
     "dispatch_workflow": frozenset({AW}),
     "merge_pull_request": frozenset({PRW, PRR, AR}),
 

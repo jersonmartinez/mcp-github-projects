@@ -18,6 +18,7 @@ job logs are redacted with the shared ``redact_sensitive`` helper.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -167,6 +168,44 @@ class CreateDeploymentInput(_RepoTarget):
         return DispatchWorkflowInput._safe_git_ref(value)
 
 
+class UpdateReleaseInput(_RepoTarget):
+    release_id: int = Field(..., ge=1, description="Release id from list_releases or create_release.")
+    tag_name: Optional[str] = Field(default=None, min_length=1, max_length=255, description="Optional replacement tag name.")
+    name: Optional[str] = Field(default=None, max_length=255, description="Release title.")
+    body: Optional[str] = Field(default=None, max_length=125_000, description="Release notes Markdown.")
+    draft: Optional[bool] = Field(default=None, description="Publish/unpublish draft state when changed.")
+    prerelease: Optional[bool] = Field(default=None, description="Prerelease marker.")
+
+
+class ListReleaseAssetsInput(_RepoTarget):
+    release_id: int = Field(..., ge=1, description="Release id whose assets are listed.")
+    limit: int = Field(default=30, ge=1, le=MAX_LIST, description="Max assets returned.")
+
+
+class UploadReleaseAssetInput(_RepoTarget):
+    release_id: int = Field(..., ge=1, description="Release id receiving the asset.")
+    name: str = Field(..., min_length=1, max_length=255, pattern=r"^[^/\\]+$", description="Asset file name; path separators are rejected.")
+    content_base64: str = Field(..., min_length=1, max_length=70_000_000, description="Base64-encoded asset bytes (approximately 50 MiB decoded maximum).")
+    content_type: str = Field(default="application/octet-stream", min_length=3, max_length=255, pattern=r"^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$", description="Asset MIME type.")
+    label: Optional[str] = Field(default=None, max_length=255, description="Optional display label.")
+
+
+class DeleteReleaseAssetInput(_RepoTarget):
+    release_id: int = Field(..., ge=1, description="Release id that must own the asset; never guess it.")
+    asset_id: int = Field(..., ge=1, description="Release asset id from list_release_assets; never guess it.")
+    confirm: bool = Field(default=False, description="Required true because deleting a release asset cannot be undone.")
+
+
+class CreateDeploymentStatusInput(_RepoTarget):
+    deployment_id: int = Field(..., ge=1, description="Deployment id from create_deployment/list_deployments.")
+    state: Literal["error", "failure", "inactive", "in_progress", "queued", "pending", "success"] = Field(..., description="Deployment status state.")
+    environment: Optional[str] = Field(default=None, max_length=255, description="Environment name; normally inherited from the deployment.")
+    description: str = Field(default="", max_length=512, description="Human-readable status detail.")
+    environment_url: Optional[str] = Field(default=None, max_length=2048, description="Optional environment URL.")
+    log_url: Optional[str] = Field(default=None, max_length=2048, description="Optional deployment log URL.")
+    auto_inactive: bool = Field(default=True, description="Mark previous non-inactive statuses inactive when state is success.")
+
+
 class DispatchWorkflowInput(_RepoTarget):
     workflow: str = Field(
         ..., min_length=1, max_length=128,
@@ -282,6 +321,23 @@ async def _put(path: str, body: dict[str, Any]) -> Any:
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
+async def _patch_json(path: str, body: dict[str, Any]) -> Any:
+    args = ["api", "--method", "PATCH", path]
+    for key, value in body.items():
+        if value is None:
+            args += ["-F", f"{key}=null"]
+        elif isinstance(value, bool):
+            args += ["-F", f"{key}={'true' if value else 'false'}"]
+        else:
+            args += ["-f", f"{key}={value}"]
+    result = await get_service_factory().gh().run(args)
+    return json.loads(result.stdout) if result.stdout.strip() else {}
+
+
+async def _delete(path: str) -> None:
+    await get_service_factory().gh().run(["api", "--method", "DELETE", path])
+
+
 def _run_summary(run: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": run.get("id"),
@@ -339,6 +395,21 @@ def _release_summary(release: dict[str, Any]) -> dict[str, Any]:
         "published_at": release.get("published_at"),
         "url": release.get("html_url"),
         "assets": len(release.get("assets") or []),
+    }
+
+
+def _release_asset_summary(asset: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": asset.get("id"),
+        "name": asset.get("name"),
+        "label": asset.get("label"),
+        "content_type": asset.get("content_type"),
+        "size": asset.get("size"),
+        "download_count": asset.get("download_count"),
+        "state": asset.get("state"),
+        "created_at": asset.get("created_at"),
+        "updated_at": asset.get("updated_at"),
+        "url": asset.get("browser_download_url"),
     }
 
 
@@ -727,6 +798,153 @@ async def create_release(params: CreateReleaseInput) -> dict:
         return handle_tool_error(exc, context="Create release failed")
 
 
+async def update_release(params: UpdateReleaseInput) -> dict:
+    """Update release metadata, notes, draft state, or prerelease state."""
+    try:
+        body = {
+            key: value
+            for key, value in {
+                "tag_name": params.tag_name,
+                "name": params.name,
+                "body": params.body,
+                "draft": params.draft,
+                "prerelease": params.prerelease,
+            }.items()
+            if value is not None
+        }
+        if not body:
+            return build_error_response(
+                error_type="validation",
+                message="update_release requires at least one mutable field.",
+                suggestion="Pass name, body, tag_name, draft, or prerelease.",
+            )
+        release = await _patch_json(f"{_repo_path(params)}/releases/{params.release_id}", body)
+        if not release.get("id"):
+            return build_error_response(
+                error_type="internal",
+                message="GitHub returned an incomplete release update response.",
+                suggestion="Reconcile with list_releases before retrying.",
+            )
+        return ToolSuccess(data={"release": _release_summary(release)}).model_dump()
+    except CLIError as exc:
+        return _cli_error("update_release", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Update release failed")
+
+
+async def list_release_assets(params: ListReleaseAssetsInput) -> dict:
+    """List release asset metadata without downloading binary content."""
+    try:
+        data = await _get(
+            f"{_repo_path(params)}/releases/{params.release_id}/assets",
+            {"per_page": params.limit},
+        )
+        assets = [_release_asset_summary(a) for a in (data if isinstance(data, list) else [])[: params.limit]]
+        return ToolSuccess(data={"total": len(assets), "assets": assets}).model_dump()
+    except CLIError as exc:
+        return _cli_error("list_release_assets", exc, _PERMISSION_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="List release assets failed")
+
+
+async def upload_release_asset(params: UploadReleaseAssetInput) -> dict:
+    """Upload a base64-supplied asset to a release without reading client paths."""
+    try:
+        try:
+            content = base64.b64decode(params.content_base64, validate=True)
+        except ValueError:
+            return build_error_response(
+                error_type="validation",
+                message="content_base64 is not valid base64.",
+                suggestion="Encode the asset bytes as standard base64; the server never reads a client filesystem path.",
+            )
+        if not content or len(content) > 50 * 1024 * 1024:
+            return build_error_response(
+                error_type="validation",
+                message="Decoded asset content must be between 1 byte and 50 MiB.",
+                suggestion="Split large release artifacts or upload them through a CI release pipeline.",
+            )
+        from clients.rest_client import GitHubRESTClient
+
+        rest = GitHubRESTClient(token=await get_service_factory().token())
+        query: dict[str, Any] = {"name": params.name}
+        if params.label:
+            query["label"] = params.label
+        asset = await rest.request(
+            "POST",
+            f"https://uploads.github.com/{_repo_path(params)}/releases/{params.release_id}/assets",
+            params=query,
+            content=content,
+            extra_headers={"Content-Type": params.content_type},
+        )
+        if not isinstance(asset, dict) or not asset.get("id"):
+            return build_error_response(
+                error_type="internal",
+                message="GitHub returned an incomplete release asset response; reconcile with list_release_assets before retrying.",
+                suggestion="Asset upload is not safely replayable after an ambiguous transport response.",
+            )
+        return ToolSuccess(data={"asset": _release_asset_summary(asset)}).model_dump()
+    except Exception as exc:
+        return handle_tool_error(exc, context="Upload release asset failed")
+
+
+async def delete_release_asset(params: DeleteReleaseAssetInput) -> dict:
+    """Permanently delete a release asset after ownership verification and confirmation."""
+    try:
+        if not params.confirm:
+            return build_error_response(
+                error_type="validation",
+                message="Deleting a release asset is permanent; pass confirm=true.",
+                suggestion="Run list_release_assets first and verify the exact asset id.",
+            )
+        ownership = await list_release_assets(
+            ListReleaseAssetsInput(owner=params.owner, repo=params.repo, release_id=params.release_id, limit=MAX_LIST)
+        )
+        if not ownership.get("ok"):
+            return ownership
+        assets = ownership["data"].get("assets", [])
+        if not any(asset.get("id") == params.asset_id for asset in assets):
+            return build_error_response(
+                error_type="validation",
+                message=f"Asset {params.asset_id} was not found on release {params.release_id}.",
+                suggestion="Call list_release_assets and do not guess asset ids.",
+            )
+        await _delete(f"{_repo_path(params)}/releases/assets/{params.asset_id}")
+        return ToolSuccess(data={"deleted": True, "release_id": params.release_id, "asset_id": params.asset_id}).model_dump()
+    except CLIError as exc:
+        return _cli_error("delete_release_asset", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Delete release asset failed")
+
+
+async def create_deployment_status(params: CreateDeploymentStatusInput) -> dict:
+    """Create a deployment status for an existing deployment."""
+    try:
+        body: dict[str, Any] = {
+            "state": params.state,
+            "description": params.description,
+            "auto_inactive": params.auto_inactive,
+        }
+        if params.environment:
+            body["environment"] = params.environment
+        if params.environment_url:
+            body["environment_url"] = params.environment_url
+        if params.log_url:
+            body["log_url"] = params.log_url
+        status = await _post_json(f"{_repo_path(params)}/deployments/{params.deployment_id}/statuses", body)
+        if not status.get("id"):
+            return build_error_response(
+                error_type="internal",
+                message="GitHub returned an incomplete deployment status response.",
+                suggestion="Read the deployment statuses in GitHub before retrying.",
+            )
+        return ToolSuccess(data={"status": {"id": status.get("id"), "state": status.get("state"), "description": status.get("description"), "environment": status.get("environment"), "created_at": status.get("created_at"), "url": status.get("target_url")}}).model_dump()
+    except CLIError as exc:
+        return _cli_error("create_deployment_status", exc, _WRITE_HINT)
+    except Exception as exc:
+        return handle_tool_error(exc, context="Create deployment status failed")
+
+
 async def create_deployment(params: CreateDeploymentInput) -> dict:
     """Create a deployment for a validated ref without bypassing required contexts."""
     try:
@@ -880,6 +1098,11 @@ CI_TOOLS = [
     create_deployment,
     list_releases,
     create_release,
+    update_release,
+    list_release_assets,
+    upload_release_asset,
+    delete_release_asset,
+    create_deployment_status,
     dispatch_workflow,
     merge_pull_request,
 ]
