@@ -90,10 +90,10 @@ jobs:
       - name: Build test image
         run: docker build --build-arg INSTALL_TEST_DEPS=true -t github-project-mcp:test .
       - name: Run Ruff correctness lint
-        run: docker run --rm github-project-mcp:test ruff check .
+        run: docker run --rm github-project-mcp:test ruff check --no-cache .
       - name: Type-check hardened core and clients
         run: >-
-          docker run --rm github-project-mcp:test mypy
+          docker run --rm github-project-mcp:test mypy --no-incremental
           clients/graphql_client.py clients/rest_client.py clients/resource_cache.py
           clients/gh_cli_client.py core/config.py core/http_auth.py core/observability.py
           core/context.py

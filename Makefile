@@ -76,7 +76,7 @@ syntax: ## Check Python syntax (ast.parse all .py files)
 .PHONY: lint
 lint: ## Run Ruff correctness lint in the test image
 	@docker build --build-arg INSTALL_TEST_DEPS=true -t $(TEST_IMAGE) .
-	@docker run --rm $(TEST_IMAGE) ruff check .
+	@docker run --rm $(TEST_IMAGE) ruff check --no-cache .
 
 .PHONY: typecheck
 typecheck: ## Run mypy on the hardened core/client boundary
