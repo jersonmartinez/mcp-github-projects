@@ -486,6 +486,21 @@ Output: { pr_number, pr_url, add_to_project_result?, metadata_results?,
           metadata_status?, link_result? }
 ```
 
+`body` is passed through as Markdown without decoding escape sequences. Its
+value must contain actual newline characters for line breaks. JSON clients
+encode those characters with the standard `\n` escape once; a literal
+backslash followed by `n` remains literal. For shell-built requests, read the
+body from a file and serialize it with a JSON encoder instead of double-escaping
+newlines.
+
+```json
+{
+  "title": "Add a feature",
+  "head": "feat/add-feature",
+  "body": "## Summary\n\n- First item\n- Second item\n\nCloses #42"
+}
+```
+
 `reviewers` accepts GitHub usernames and `team_reviewers` accepts team slugs.
 GitHub does not allow requesting review from the PR author; that entry is
 rejected and reported as a metadata failure. `metadata_status` is `complete`

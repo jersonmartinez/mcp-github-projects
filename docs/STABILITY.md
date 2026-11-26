@@ -16,6 +16,10 @@ fails if a tool name, description, input schema, or output schema changes
 without an intentional digest update. `make validate` is the local release
 gate and GitHub Actions must be green before a release tag is pushed.
 
+The PR body description clarification documents that actual newline characters
+are preserved and literal backslash-n text is not decoded. It changes tool
+descriptive metadata only; the fields and pass-through behavior are unchanged.
+
 The live smoke suite uses a configured GitHub token and target Project. It does
 not claim that every token permission combination has been tested; the token's
 actual permissions remain the operator's responsibility.

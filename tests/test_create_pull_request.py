@@ -74,6 +74,27 @@ async def test_create_pull_request_success() -> None:
 
 
 @pytest.mark.anyio
+async def test_create_pull_request_preserves_multiline_body() -> None:
+    """Actual newlines in a PR body are forwarded unchanged to GitHub."""
+    body = "## Summary\n\n- First item\n- Second item\n\nCloses #173"
+    run_mock = AsyncMock(return_value=_cmd_result(json.dumps(PR_API_RESPONSE)))
+
+    with patch("core.auth.resolve_token", new=AsyncMock(return_value="tok")), \
+            patch("clients.gh_cli_client.GHCLIClient.run", new=run_mock):
+        result = await create_pull_request(
+            CreatePullRequestInput(
+                title="Clarify multiline PR body input",
+                head="docs/pr-body-newline-clarity",
+                body=body,
+            )
+        )
+
+    assert result["ok"] is True
+    called_args = run_mock.call_args.args[0]
+    assert f"body={body}" in called_args
+
+
+@pytest.mark.anyio
 async def test_create_pull_request_draft_flag() -> None:
     """draft=True is forwarded as draft=true to the REST call."""
     run_mock = AsyncMock(return_value=_cmd_result(json.dumps(PR_API_RESPONSE)))
