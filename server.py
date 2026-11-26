@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import uvicorn
 from fastmcp import FastMCP
 from fastmcp.tools.function_tool import FunctionTool
+from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -55,6 +56,8 @@ from tools.discovery.discover import discover_ids
 from tools.fields.estimate import set_estimate
 from tools.discovery.list_items import list_project_items
 from tools.projects.update_fields import update_project_item_fields
+from tools.projects.validate_fields import validate_project_field_values
+from tools.projects.workflows_visibility import delete_project_workflow, list_project_workflows
 from tools.fields.milestones import (
     create_milestone,
     close_milestone,
@@ -238,6 +241,9 @@ _ALL_TOOLS: list = [
     list_project_items,
     create_project_item,
     update_project_item_fields,
+    validate_project_field_values,
+    list_project_workflows,
+    delete_project_workflow,
     add_item_to_project,
     set_estimate,
     archive_project_item,
@@ -396,10 +402,19 @@ def _build_tool(fn, tool_name: str) -> FunctionTool:
     """Wrap ``fn`` in the uniform argument convention and a request scope."""
     original = FunctionTool.from_function(fn, name=tool_name)
     normalized, schema = accept_flat_or_wrapped(fn, original.parameters, tool_name)
+    access = classify(tool_name)
+    annotations = ToolAnnotations(
+        title=tool_name.replace("_", " ").title(),
+        read_only_hint=access is ToolAccess.READ,
+        destructive_hint=access is ToolAccess.DELETE,
+        idempotent_hint=access is ToolAccess.READ,
+        open_world_hint=True,
+    )
     tool = FunctionTool.from_function(
-        with_request_context(normalized, tool_name, classify(tool_name).value),
+        with_request_context(normalized, tool_name, access.value),
         name=tool_name,
         description=original.description,
+        annotations=annotations,
     )
     return tool.model_copy(update={"parameters": schema})
 
@@ -411,6 +426,69 @@ if __name__ == "__main__":
 
 mcp.instructions = _instructions()
 _REGISTRATION = _register_tools()
+
+
+# ── Guided MCP prompts ───────────────────────────────────────────────────────
+# Prompts orchestrate existing tools; they never bypass access levels, profile
+# capabilities, dry-run defaults, scope lock, or confirmation gates.
+
+
+@mcp.prompt()
+def pull_request_review(pr_number: int) -> str:
+    """Guide a safe pull-request review using CI, metadata, and project state."""
+    return (
+        f"Review pull request #{pr_number}. First inspect the PR, linked issues, "
+        "acceptance criteria, checks, reviews, changed files, and bot comments. "
+        "Do not merge unless the user explicitly asks. Report blocking findings "
+        "before non-blocking suggestions and include the exact tool evidence used."
+    )
+
+
+@mcp.prompt()
+def release_readiness_review(version: str = "next") -> str:
+    """Guide a release-readiness assessment without publishing anything."""
+    return (
+        f"Assess readiness for release {version}. Inspect open/closed issues, "
+        "merged PRs, workflow health, deployments, existing releases, changelog "
+        "evidence, and project board state. Produce go/no-go findings, risks, and "
+        "missing verification. Do not create or update a release unless separately instructed."
+    )
+
+
+@mcp.prompt()
+def issue_triage(project_number: int | None = None) -> str:
+    """Guide deterministic triage of new, stale, unassigned, or blocked issues."""
+    board = f" for project #{project_number}" if project_number else ""
+    return (
+        f"Triage issues{board}. Use read-only inventory first, group items by "
+        "missing metadata, priority, assignee, due-date risk, blocked state, and "
+        "duplicates. Propose exact writes as a dry-run plan; apply them only after "
+        "user confirmation with the appropriate write tools."
+    )
+
+
+@mcp.prompt()
+def sprint_closeout(project_number: int | None = None) -> str:
+    """Guide sprint closeout with evidence and explicit confirmation gates."""
+    board = f" project #{project_number}" if project_number else " the configured project"
+    return (
+        f"Close out the sprint on{board}. Gather status distribution, overdue work, "
+        "completed items, carry-over candidates, cycle-time evidence, and stakeholder "
+        "summary. Generate a closeout plan first; do not move, close, or comment in "
+        "bulk until the user approves the plan."
+    )
+
+
+@mcp.prompt()
+def project_health_review(project_number: int | None = None) -> str:
+    """Guide a project health and flow-metrics review."""
+    board = f"#{project_number}" if project_number else "the configured project"
+    return (
+        f"Review the health of project {board}. Combine board consistency, missing "
+        "fields, status/priority distribution, assignee load, due-date risk, stale "
+        "work, blocked work, workflow configuration visibility, and operational metrics. "
+        "Return concise statistics, anomalies, and prioritized remediation steps."
+    )
 
 
 # ── Startup Authentication ───────────────────────────────────────────────────

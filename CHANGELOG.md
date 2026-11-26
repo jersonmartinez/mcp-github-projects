@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Safe execution upgrades for project automation: `validate_project_field_values`,
+  executable dry-run-first bulk-by-filter operations, Markdown table imports with
+  all-row validation, native Projects V2 workflow visibility, workflow deletion
+  guarded as a permanent-delete operation, and aggregated project flow metrics.
+- Guided MCP prompts for pull-request review, release readiness, issue triage,
+  sprint closeout, and project health reviews. Prompts orchestrate tools without
+  bypassing access levels, profiles, scope lock, dry-run, or confirmation gates.
+- Release and deployment lifecycle tools: update releases, list/upload/delete
+  release assets, and create deployment statuses. Release-asset deletion verifies
+  release ownership and requires full access plus explicit confirmation.
+
+### Changed
+
+- `bulk_update_items` now defaults to a validated dry-run plan and revalidates all
+  field values before applying any write, preventing invalid friendly values from
+  starting a partially planned mutation.
+- The generated tool catalog now covers 188 tools, including explicit MCP
+  read/write/destructive annotations for client-side safety UX.
+
 ## [1.6.0] - 2026-11-26
 
 ### 🚀 Features

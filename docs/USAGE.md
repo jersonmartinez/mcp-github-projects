@@ -13,19 +13,28 @@ Usage guide for the GitHub Project Management MCP server, with examples per cate
 
 ## Tool Categories
 
-The main categories below; the extended capability suite (62 tools), repository/project provisioning and the permanent-delete tools are listed in [TOOLS.md](TOOLS.md).
+The main categories below; the extended capability suite (63 tools), repository/project provisioning and the permanent-delete tools are listed in [TOOLS.md](TOOLS.md).
 
 | Category | Tools | Count |
 |----------|-------|-------|
-| Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, add_item_to_project, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items | 11 |
+| Discovery & Board | discover_ids, list_project_items, create_project_item, update_project_item_fields, validate_project_field_values, add_item_to_project, set_estimate, archive_project_item, move_to_done, move_to_trash, move_to_status, bulk_update_items, list_project_workflows, delete_project_workflow | 14 |
 | Issues | close_issue, reopen_issue, comment_issue, edit_issue, get_issue_detail, list_issue_dependencies, add_issue_dependency, remove_issue_dependency, search_issues, bulk_close_issues, bulk_assign | 11 |
 | Hierarchy | add_sub_issue, remove_sub_issue, list_sub_issues | 3 |
 | Milestones | create_milestone, update_milestone, close_milestone, list_milestones | 4 |
 | Labels | create_label, list_labels | 2 |
 | Stats & Planning | get_project_stats, get_sprint_summary, sprint_planning, generate_release_notes, link_pull_request, create_pull_request, update_pull_request | 7 |
-| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, cancel_workflow_run, list_workflow_artifacts, list_environments, list_deployments, create_deployment, list_releases, create_release, dispatch_workflow, merge_pull_request | 15 |
+| CI / Actions | list_workflows, list_workflow_runs, get_workflow_run, get_pr_checks, get_job_logs, rerun_workflow_run, cancel_workflow_run, list_workflow_artifacts, list_environments, list_deployments, create_deployment, create_deployment_status, list_releases, create_release, update_release, list_release_assets, upload_release_asset, delete_release_asset, dispatch_workflow, merge_pull_request | 20 |
 | Response quality | repository_health_summary, pull_request_lifecycle_summary, issue_activity_digest, workflow_run_diagnostic_summary, check_conclusion_summary, label_milestone_consistency_report, issue_metadata_consistency_report, issue_closure_readiness_report, paginated_issue_page, response_diagnostics | 10 |
 | Workflows | complete_issue, daily_standup, sprint_review, triage_new_issues, escalate_overdue, handoff_issue, create_epic, close_sprint, blocked_report | 9 |
+
+## Guided MCP prompts
+
+The server also exposes reusable MCP prompts for common operator workflows:
+`pull_request_review`, `release_readiness_review`, `issue_triage`,
+`sprint_closeout`, and `project_health_review`. Prompts are orchestration
+templates, not privileged operations: they instruct the client to gather
+read-only evidence first, present dry-run plans for writes, and respect every
+access-level, profile, scope-lock, and confirmation gate enforced by the tools.
 
 ---
 
@@ -190,11 +199,68 @@ Output: { item_id, status, message }
 
 ### bulk_update_items
 
-Updates fields on multiple project items at once.
+Updates fields on multiple project items at once. It is dry-run-first:
+`dry_run` defaults to `true`, validates every friendly field/value through the
+same resolver used by real writes, and returns the exact GraphQL payloads that
+would be sent. Re-run with `dry_run=false` to apply; because all values are
+validated before the first mutation, invalid field values do not produce a
+partially planned write.
 
 ```text
-Input:  { "item_ids": ["PVTI_...", "PVTI_..."], "fields": { "Priority": "Urgent", "Due date": "2026-08-01" } }
+Plan:  { "item_ids": ["PVTI_..."], "fields": { "Priority": "Urgent" } }
+Apply: { "item_ids": ["PVTI_..."], "fields": { "Priority": "Urgent" }, "dry_run": false }
 Output: { results: [{ item_id, fields: [{ field, status }] }], total, fully_updated }
+```
+
+### validate_project_field_values
+
+Read-only preflight validation for friendly project field values. It resolves
+field names, single-select option titles, dates, numbers and text against live
+board metadata and returns the exact mutation payload without mutating anything.
+Use it before `update_project_item_fields` or a bulk write when an agent needs
+to present a precise diff to the user.
+
+```text
+Input:  { "fields": { "Priority": "Urgent", "Due date": "2026-08-01" } }
+Output: { valid: true, fields: [{ field, field_id, data_type, payload, valid_options }] }
+```
+
+### Project-native workflow visibility
+
+`list_project_workflows` exposes the built-in Projects V2 workflows with their
+node id, name, number, enabled state, and timestamps. GitHub does **not** expose
+public mutations to create, edit, enable, or disable those workflow rules. The
+only native lifecycle mutation is deletion:
+
+```text
+Read:   list_project_workflows {}
+Delete: delete_project_workflow {"workflow_id": "<node-id>", "confirm": true}
+```
+
+`delete_project_workflow` is permanent-delete tier (`MCP_ACCESS_LEVEL=full`)
+because GitHub provides no API operation capable of recreating the workflow or
+its exact rule configuration. For normal automation, prefer deterministic MCP
+workflows and dry-run-first bulk tools, which compose API-supported operations
+and can be verified after each step.
+
+### Executable bulk-by-filter and Markdown import
+
+The extended suite now includes executable, dry-run-first project operations:
+
+- `project_bulk_status_by_filter`
+- `project_bulk_priority_by_filter`
+- `project_bulk_due_date_by_filter`
+- `project_import_markdown`
+
+The first call selects and validates rows without writing. Applying changes is
+explicit and requires `dry_run=false`, `confirm=true`, and a `target_value` for
+bulk-by-filter operations. Imports are limited to 50 rows, require a title
+column, reject duplicate titles and invalid dates before the first write, and
+return per-row outcomes including any created issue number.
+
+```text
+Plan:  project_bulk_status_by_filter {"status": "In Progress", "target_value": "Done"}
+Apply: project_bulk_status_by_filter {"status": "In Progress", "target_value": "Done", "dry_run": false, "confirm": true}
 ```
 
 ---
@@ -715,8 +781,13 @@ write. Merging also requires Pull requests write and Actions/checks read.
 | `list_environments` | read | Deployment environments with summarized protection-rule counts. |
 | `list_deployments` | read | Deployments filtered by environment, ref, or SHA. |
 | `create_deployment` | write | Create a deployment for a validated ref; `auto_merge` defaults to false and required contexts are never bypassed. |
+| `create_deployment_status` | write | Report `in_progress`, `success`, `failure`, `error`, `queued`, or `inactive` for an existing deployment, with optional environment/log URLs. |
 | `list_releases` | read | Releases with tag, publication state, and asset counts. |
 | `create_release` | write | Create a release for a validated tag, with draft/prerelease controls. |
+| `update_release` | write | Update release name, notes, tag, draft, or prerelease state; at least one mutable field is required. |
+| `list_release_assets` | read | Asset metadata (name, size, content type, download count, URL) without downloading binary content. |
+| `upload_release_asset` | write | Upload base64-supplied bytes to a release; max 50 MiB decoded, never reads a client filesystem path. |
+| `delete_release_asset` | delete | Permanently delete an asset only after verifying it belongs to the supplied release and `confirm=true`. |
 | `dispatch_workflow` | write | Trigger a `workflow_dispatch` run on `ref`, with up to 10 string `inputs`. |
 | `merge_pull_request` | write | Merge an open, non-draft PR only for its expected head SHA, clean mergeability and passing checks; repository protections remain enforced. |
 

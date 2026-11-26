@@ -42,6 +42,7 @@ class BulkUpdateItemsInput(BaseModel):
     )
     fields: dict = Field(description="Fields to set on all items (e.g., {\"Priority\": \"Urgent\", \"Due date\": \"2026-08-01\"})")
     project_number: int | None = Field(default=None, gt=0, le=100_000)
+    dry_run: bool = Field(default=True, description="Validate and return the planned per-item writes without mutating (default true).")
 
 
 class GetIssueDetailInput(BaseModel):
@@ -175,6 +176,54 @@ async def bulk_update_items(params: BulkUpdateItemsInput) -> dict:
             context=context,
         )
         metadata = await discovery.get_cached_or_discover()
+
+        if params.dry_run:
+            planned: list[dict] = []
+            validation_errors: list[str] = []
+            for item_id in params.item_ids:
+                planned_fields: list[dict] = []
+                for field_name, value in params.fields.items():
+                    try:
+                        field, payload = project_service.plan_field_value(metadata, field_name, value)
+                        planned_fields.append({
+                            "field": field.name,
+                            "value": value,
+                            "payload": payload,
+                            "status": "planned",
+                        })
+                    except Exception as field_exc:
+                        planned_fields.append({
+                            "field": field_name,
+                            "value": value,
+                            "status": "invalid",
+                            "error": str(field_exc),
+                        })
+                        validation_errors.append(f"{item_id}/{field_name}: {field_exc}")
+                planned.append({"item_id": item_id, "fields": planned_fields})
+
+            return ToolSuccess(
+                data={
+                    "dry_run": True,
+                    "valid": not validation_errors,
+                    "results": planned,
+                    "total": len(params.item_ids),
+                    "errors": validation_errors,
+                    "message": "Plan only; re-run with dry_run=false to apply.",
+                },
+            ).model_dump()
+
+        validation_errors: list[str] = []
+        for field_name, value in params.fields.items():
+            try:
+                project_service.plan_field_value(metadata, field_name, value)
+            except Exception as field_exc:
+                validation_errors.append(f"{field_name}: {field_exc}")
+        if validation_errors:
+            return build_error_response(
+                error_type="validation",
+                message="bulk_update_items validation failed; no items were mutated: " + "; ".join(validation_errors),
+                suggestion="Run validate_project_field_values or dry_run=true and correct the invalid friendly values.",
+            )
 
         results: list[dict] = []
 

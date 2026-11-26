@@ -408,7 +408,7 @@ repository content, tokens, or error messages.
 
 `MCP_ACCESS_LEVEL` remains the hard read/write/delete boundary. On top of it,
 `MCP_TOOL_PROFILE` narrows the visible catalog so a client sees the tools that
-match its operator's job instead of the entire 179-tool surface. A profile can
+match its operator's job instead of the entire 188-tool surface. A profile can
 only reduce exposure; it never grants writes or deletes denied by the access
 level.
 

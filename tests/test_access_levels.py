@@ -39,6 +39,8 @@ DELETE_TOOLS = {
     "delete_issue_comment",
     "delete_label",
     "delete_milestone",
+    "delete_release_asset",
+    "delete_project_workflow",
 }
 
 
