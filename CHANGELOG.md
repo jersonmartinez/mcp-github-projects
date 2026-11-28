@@ -7,11 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-28
+
+### 🚀 Features
+
+- **Expose governed write policy** by @jersonmartinez in [#179](https://github.com/jersonmartinez/mcp-github-projects/pull/179).
+
 ### Added
 
 - `server_info` now reports the effective governed-commit branch and path
   fences, including the exact workflow-file allowlist, without exposing
   credentials or changing authorization policy.
+
+### 📦 Release data
+
+- **Version:** `v1.8.0` (`minor` bump from `v1.7.0` — new user-facing capability).
+- **Compatibility:** ✅ backwards-compatible feature release.
+- **Source:** pull request [#179](https://github.com/jersonmartinez/mcp-github-projects/pull/179); merge commit `a2702bf67ca2`.
+- **Scope:** includes curated changes that were accumulated under `[Unreleased]` before automation.
+- **Compare:** [`v1.7.0...v1.8.0`](https://github.com/jersonmartinez/mcp-github-projects/compare/v1.7.0...v1.8.0).
+- **Container image:** `ghcr.io/jersonmartinez/mcp-github-projects:1.8.0` (also `ghcr.io/jersonmartinez/mcp-github-projects:1.8` and `ghcr.io/jersonmartinez/mcp-github-projects:latest`).
+- **Upgrade:** `docker pull ghcr.io/jersonmartinez/mcp-github-projects:1.8.0`.
 
 ## [1.7.0] - 2026-11-26
 
