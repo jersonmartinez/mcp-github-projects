@@ -1,10 +1,11 @@
-"""Diagnostics tool: server_info (issue #34).
+"""Diagnostics tool: server_info (issues #34 and #178).
 
 Returns safe, credential-free server metadata so an MCP client can see the
-effective access level and scope lock without probing. Mirrors the
+effective access level, scope lock, and repository write-policy fences without
+probing. Mirrors the
 ``server_info`` tool in mcp-monday-projects (which reports its write policy and
 workspace scope); here it reports ``MCP_ACCESS_LEVEL`` and
-``GH_PROJECT_SCOPE_LOCK`` plus the configured target.
+``GH_PROJECT_SCOPE_LOCK`` plus the configured target and write policy.
 
 No token, header, or secret is ever included in the response.
 """
@@ -30,7 +31,7 @@ class ServerInfoInput(BaseModel):
 
 
 async def server_info(params: ServerInfoInput) -> dict:
-    """Return safe server metadata: access level, scope lock, and target.
+    """Return safe server metadata: access level, scope lock, write-policy fences, and target.
 
     The response includes:
       - access_level: the effective MCP_ACCESS_LEVEL (read | write | full).
@@ -39,6 +40,8 @@ async def server_info(params: ServerInfoInput) -> dict:
         permanent-delete tools are hidden at this level.
       - scope_lock: whether GH_PROJECT_SCOPE_LOCK confines the server, plus the
         variable name and the target it is (or would be) locked to.
+      - write_policy: the effective branch/path fences for governed commits,
+        including the exact workflow paths explicitly allowlisted.
       - target: the configured org / repo / project (no credentials).
     """
     try:
@@ -94,6 +97,24 @@ async def server_info(params: ServerInfoInput) -> dict:
             ),
         }
 
+        write_policy = {
+            "branch_prefixes": list(settings.branch_prefixes()),
+            "branch_prefixes_variable": "GH_PROJECT_WRITE_BRANCH_PREFIXES",
+            "path_prefixes": list(settings.path_prefixes()),
+            "path_prefixes_variable": "GH_PROJECT_WRITE_PATH_PREFIXES",
+            "allowed_github_workflow_paths": list(settings.github_workflow_paths()),
+            "allowed_github_workflow_paths_variable": (
+                "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS"
+            ),
+            "default_branch_protected": True,
+            "github_workflows_default_denied": True,
+            "meaning": (
+                "Governed commits must use an allowed branch and path. Files "
+                "under .github/ remain denied unless an exact workflow path "
+                "is explicitly allowlisted."
+            ),
+        }
+
         return ToolSuccess(
             data={
                 "server": "github-project-management",
@@ -106,6 +127,7 @@ async def server_info(params: ServerInfoInput) -> dict:
                 "tool_profile_variable": "MCP_TOOL_PROFILE",
                 "exposed_tools": registered_names if registered_names is not None else tools_for_level(level),
                 "scope_lock": scope_lock,
+                "write_policy": write_policy,
                 "target": target,
             },
         ).model_dump()

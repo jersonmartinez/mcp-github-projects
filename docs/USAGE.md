@@ -847,15 +847,24 @@ Two server-side switches govern the whole surface (set in the environment /
 
 ### server_info
 
-Returns the effective access level, scope lock, tool-exposure counts, and the
-configured target. Credential-free. No arguments.
+Returns the effective access level, scope lock, tool-exposure counts,
+configured target, and governed-commit write fences. Credential-free and
+read-only; it does not change the server configuration. No arguments.
 
 ```text
 Input:  {}
 Output: { access_level, access_level_meaning, tool_exposure: { classified_total,
           exposed, hidden, hidden_delete_tools }, exposed_tools: [...],
-          scope_lock: { enabled, variable, confined_to, meaning }, target }
+          scope_lock: { enabled, variable, confined_to, meaning },
+          write_policy: { branch_prefixes, path_prefixes,
+            allowed_github_workflow_paths, default_branch_protected,
+            github_workflows_default_denied }, target }
 ```
+
+Use `write_policy` to diagnose a rejected `commit_files` path. Workflow files
+remain denied unless their exact repository-relative paths appear in
+`allowed_github_workflow_paths`; the server never expands this allowlist from a
+tool call.
 
 ### search_tools
 
