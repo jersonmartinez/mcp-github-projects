@@ -270,3 +270,57 @@ async def test_server_info_default_write_hides_deletes(monkeypatch) -> None:
     assert data["scope_lock"]["enabled"] is False
     assert "delete_issue" not in data["exposed_tools"]
     assert data["tool_exposure"]["hidden_delete_tools"] == len(DELETE_TOOLS)
+
+
+@pytest.mark.anyio
+async def test_server_info_reports_effective_repository_write_policy(monkeypatch) -> None:
+    monkeypatch.setenv("GH_PROJECT_WRITE_BRANCH_PREFIXES", "feat/,fix/")
+    monkeypatch.setenv("GH_PROJECT_WRITE_PATH_PREFIXES", "docs/,.github/workflows/")
+    monkeypatch.setenv(
+        "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS",
+        ".github/workflows/example-deploy.yml,"
+        ".github/workflows/invalid.txt,../outside/release.yml",
+    )
+    get_settings.cache_clear()
+
+    from tools.meta.server_info import ServerInfoInput, server_info
+
+    result = await server_info(ServerInfoInput())
+
+    assert result["ok"] is True
+    assert result["data"]["write_policy"] == {
+        "branch_prefixes": ["feat/", "fix/"],
+        "branch_prefixes_variable": "GH_PROJECT_WRITE_BRANCH_PREFIXES",
+        "path_prefixes": ["docs/", ".github/workflows/"],
+        "path_prefixes_variable": "GH_PROJECT_WRITE_PATH_PREFIXES",
+        "allowed_github_workflow_paths": [
+            ".github/workflows/example-deploy.yml",
+        ],
+        "allowed_github_workflow_paths_variable": (
+            "GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS"
+        ),
+        "default_branch_protected": True,
+        "github_workflows_default_denied": True,
+        "meaning": (
+            "Governed commits must use an allowed branch and path. Files "
+            "under .github/ remain denied unless an exact workflow path "
+            "is explicitly allowlisted."
+        ),
+    }
+
+
+@pytest.mark.anyio
+async def test_server_info_shows_empty_workflow_allowlist_as_default_denial(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS", raising=False)
+    get_settings.cache_clear()
+
+    from tools.meta.server_info import ServerInfoInput, server_info
+
+    result = await server_info(ServerInfoInput())
+
+    assert result["ok"] is True
+    policy = result["data"]["write_policy"]
+    assert policy["allowed_github_workflow_paths"] == []
+    assert policy["github_workflows_default_denied"] is True

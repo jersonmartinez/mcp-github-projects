@@ -403,7 +403,9 @@ class TestStableToolSchemas:
         # descriptive metadata only; body payloads remain pass-through strings.
         # Rebaselined again for workflow automation, release lifecycle, validation,
         # prompt, and executable bulk/import tools added in this change.
-        assert digest == "145923087dddfdcab5f88bf594836272c35d6f15fb0dfd5ba06fcb9590cb0faa", (
+        # Rebaselined for server_info's additive, credential-free write-policy
+        # diagnostics; no tool arguments or commit authorization behavior changed.
+        assert digest == "e68458cb09258e7010d3267edd3809c108b1855b836a8e2beea87c284e2b0743", (
             f"Stable tool schema digest changed: {digest}. "
             "Update intentionally and document the protocol change."
         )

@@ -448,6 +448,14 @@ of its own) in the `mcpServers` entry.
 | `GH_PROJECT_WRITE_PATH_PREFIXES` | unset (any) | Path prefixes `commit_files` may touch; paths under `.github/` are denied unless separately allowlisted |
 | `GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS` | unset (deny all) | Exact `.github/workflows/*.yml` or `.yaml` paths `commit_files` may touch; every other `.github/` path stays denied |
 
+Call the read-only `server_info` tool to inspect the effective branch and path
+fences before a governed commit. If a workflow file is rejected, add only its
+exact repository-relative path to `GH_PROJECT_ALLOWED_GITHUB_WORKFLOW_PATHS`
+in the MCP server's deployment configuration; if path prefixes are also
+configured, they must permit that path too. Restart/recreate the MCP server
+after changing environment configuration. `server_info` reports policy but
+cannot change it or bypass `commit_files` validation.
+
 The repository's documentation is readable with `list_repository_directory`,
 `get_repository_file` and `search_repository_code`; pull requests with
 `list_pull_requests` (`state=merged` orders by merge date) and
